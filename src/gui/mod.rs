@@ -869,7 +869,7 @@ fn synthesize_new_file_diff(filename: &str, content: &str) -> String {
     diff
 }
 
-/// Placeholder so the pager shows "Binary file (not viewable)".
+/// Synthetic binary diff so the pager renders its unavailable-preview placeholder.
 fn synthesize_binary_file_diff(filename: &str) -> String {
     format!(
         "diff --git a/{f} b/{f}\n\
@@ -2267,6 +2267,7 @@ impl Gui {
                             note,
                             is_old,
                         )],
+                        preview_placeholder: None,
                         section_index,
                     },
                 );
@@ -4685,7 +4686,7 @@ impl Gui {
                             .map(|(line_idx, _, panel)| (line_idx, panel))
                             .unwrap_or_else(|| {
                                 (
-                                    self.diff_view.scroll_offset + (top_row - pl.inner_y) as usize,
+                                    self.diff_view.fallback_line_idx_for_row(top_row, &pl),
                                     sel_ref.panel,
                                 )
                             })
@@ -8407,6 +8408,13 @@ impl Gui {
                         self.diff_focused = true;
                         return;
                     }
+                    // Clicks on the pinned sticky file header don't start a
+                    // text selection — there is no content to select there.
+                    if self.diff_view.is_sticky_row(mouse.row, &pl) {
+                        self.diff_view.selection = None;
+                        self.diff_focused = true;
+                        return;
+                    }
 
                     if let Some((line_idx, panel)) = self.diff_view.hovered_line {
                         // Compute the  button Y position: code row + note_count * 5
@@ -8456,7 +8464,10 @@ impl Gui {
                         } else {
                             0
                         };
-                        let plus_y = pl.inner_y + plus_acc as u16 + (note_count * 5) as u16;
+                        let plus_y = pl.inner_y
+                            + self.diff_view.sticky_row_height(&pl)
+                            + plus_acc as u16
+                            + (note_count * 5) as u16;
 
                         // Check if click was on `` button (hidden when notes are off)
                         let is_on_plus_x = match panel {
@@ -8510,7 +8521,7 @@ impl Gui {
                                     );
                                 }
                             }
-                            let note_start_y = pl.inner_y + acc as u16;
+                            let note_start_y = pl.inner_y + self.diff_view.sticky_row_height(&pl) + acc as u16;
                             let click_off = mouse.row.saturating_sub(note_start_y);
                             let block_row = click_off % 5;
 
@@ -8887,6 +8898,11 @@ impl Gui {
                     let pl = DiffPanelLayout::compute(diff_rect, &self.diff_view);
                     if self.try_handle_revert_block_click(diff_rect, pl, col, row) {
                         self.diff_mode.set_focus(DiffModeFocus::DiffExploration);
+                        return;
+                    }
+                    if self.diff_view.is_sticky_row(row, &pl) {
+                        self.diff_view.selection = None;
+                        self.diff_mode.focus = DiffModeFocus::DiffExploration;
                         return;
                     }
                     if let Some(panel) = pl.panel_at_x(col) {
@@ -9505,7 +9521,7 @@ impl Gui {
             }
         }
 
-        let note_start_y = pl.inner_y + acc as u16;
+        let note_start_y = pl.inner_y + self.diff_view.sticky_row_height(&pl) + acc as u16;
         let click_off = row.saturating_sub(note_start_y);
 
         // Iterate ALL notes in render order; each takes 5 rows.
@@ -11480,6 +11496,7 @@ mod terminal_mouse_tests {
                 new_segments: None,
                 file_header: None,
                 comment_notes: Vec::new(),
+                preview_placeholder: None,
                 section_index: 0,
             });
             cache.insert(format!("key-{index}"), view);
@@ -11527,6 +11544,7 @@ mod terminal_mouse_tests {
                 new_segments: None,
                 file_header: None,
                 comment_notes: Vec::new(),
+                preview_placeholder: None,
                 section_index: 0,
             });
             cache.insert(key.to_string(), view);

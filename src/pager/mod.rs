@@ -25,6 +25,8 @@ pub struct DiffLine {
     pub file_header: Option<String>,
     /// Inline notes attached to this diff line (one entry per saved note).
     pub comment_notes: Vec<CommentNote>,
+    /// Non-source placeholder row. Space-only labels provide vertical padding without source content.
+    pub preview_placeholder: Option<&'static str>,
     /// Index of the file section this line belongs to (for multi-file highlighting).
     pub section_index: usize,
 }
