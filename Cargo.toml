@@ -47,6 +47,7 @@ axum = "0.8.9"
 futures-util = "0.3"
 async-stream = "0.3"
 libc = "0.2"
+strip-ansi-escapes = "0.2"
 
 [profile.release]
 lto = true

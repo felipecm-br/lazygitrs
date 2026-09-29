@@ -4,6 +4,7 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Paragraph, Wrap};
 
+use super::text::plain_text;
 use crate::config::Theme;
 use crate::model::commit::{Commit, CommitStat, CommitStatus};
 
@@ -62,10 +63,10 @@ pub fn render_commit_details(
         return;
     }
 
-    let message = full_message.unwrap_or(&commit.name);
-    let co_authors = parse_co_authors(message);
-    let test_badge = parse_test_status_badge(message);
-    let display_message = strip_metadata_trailers(message);
+    let message = plain_text(full_message.unwrap_or(&commit.name));
+    let co_authors = parse_co_authors(&message);
+    let test_badge = parse_test_status_badge(&message);
+    let display_message = strip_metadata_trailers(&message);
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -74,7 +75,10 @@ pub fn render_commit_details(
     if !compact && !commit.author_email.is_empty() {
         lines.push(Line::from(vec![
             Span::styled("  ✉ ", Style::default().fg(theme.text_dimmed)),
-            Span::styled(commit.author_email.clone(), Style::default().fg(theme.text)),
+            Span::styled(
+                plain_text(&commit.author_email),
+                Style::default().fg(theme.text),
+            ),
         ]));
     }
 
@@ -335,13 +339,13 @@ fn strip_co_author_trailers(message: &str) -> String {
 }
 
 fn header_line<'a>(commit: &'a Commit, theme: &Theme) -> Line<'a> {
-    let initial = commit
-        .author_name
+    let author_name = plain_text(&commit.author_name);
+    let initial = author_name
         .chars()
         .next()
         .map(|c| c.to_ascii_uppercase())
         .unwrap_or('?');
-    let avatar_color = avatar_color_for(&commit.author_email, theme);
+    let avatar_color = avatar_color_for(&plain_text(&commit.author_email), theme);
     let date = format_date(commit.unix_timestamp);
 
     Line::from(vec![
@@ -354,7 +358,7 @@ fn header_line<'a>(commit: &'a Commit, theme: &Theme) -> Line<'a> {
         ),
         Span::raw(" "),
         Span::styled(
-            commit.author_name.clone(),
+            author_name,
             Style::default()
                 .fg(theme.text_strong)
                 .add_modifier(Modifier::BOLD),
