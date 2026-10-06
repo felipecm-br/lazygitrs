@@ -448,6 +448,7 @@ pub fn render(
             diff_focused,
             !cherry_pick_clipboard.is_empty(),
             &config.user_config.keybinding,
+            !active_commit_filters.is_empty(),
         );
         // Render text selection highlight overlay and tooltip (must be before popup)
         render_selection_overlay(frame, diff_view, fl.main_panel, theme);
@@ -1145,6 +1146,7 @@ pub fn render(
         diff_focused,
         !cherry_pick_clipboard.is_empty(),
         &config.user_config.keybinding,
+        !active_commit_filters.is_empty(),
     );
 
     // Render text selection highlight overlay and tooltip
@@ -1640,6 +1642,7 @@ mod tests {
                     false,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1668,6 +1671,7 @@ mod tests {
                     false,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1712,6 +1716,7 @@ mod tests {
                     false,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1740,6 +1745,7 @@ mod tests {
                     false,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1768,6 +1774,7 @@ mod tests {
                     false,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1796,6 +1803,7 @@ mod tests {
                     true,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1824,6 +1832,7 @@ mod tests {
                     true,
                     false,
                     &keybindings,
+                    false,
                 );
             })
             .unwrap();
@@ -1854,6 +1863,7 @@ mod tests {
                     false,
                     false,
                     &custom_kb,
+                    false,
                 );
             })
             .unwrap();
@@ -1883,6 +1893,7 @@ mod tests {
                     false,
                     false,
                     &cockpit_kb,
+                    false,
                 );
             })
             .unwrap();
@@ -2109,6 +2120,101 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn format_key_hint_normalizes_standard_and_custom_bindings() {
+        use super::format_key_hint;
+
+        assert_eq!(format_key_hint("<c-s>"), "ctrl+s");
+        assert_eq!(format_key_hint("<c-l>"), "ctrl+l");
+        assert_eq!(format_key_hint("<c-L>"), "ctrl+l");
+        assert_eq!(format_key_hint("ctrl+l"), "ctrl+l");
+        assert_eq!(format_key_hint("<space>"), "space");
+        assert_eq!(format_key_hint("<esc>"), "esc");
+        assert_eq!(format_key_hint("<enter>"), "enter");
+        assert_eq!(format_key_hint("c-s"), "ctrl+s");
+        assert_eq!(format_key_hint("alt-x"), "alt+x");
+        assert_eq!(format_key_hint("shift-tab"), "shift+tab");
+    }
+
+    #[test]
+    fn render_status_bar_displays_filter_branch_and_esc_reset() {
+        use super::{DiffViewState, render_status_bar};
+        use crate::config::KeybindingConfig;
+        use crate::gui::context::{ContextId, ContextManager};
+        use crate::model::Model;
+
+        let backend = TestBackend::new(120, 2);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let model = Model::default();
+        let keybindings = KeybindingConfig::default();
+        let mut ctx_mgr = ContextManager::new();
+        ctx_mgr.set_active(ContextId::Commits);
+        let diff_view = DiffViewState::new();
+        let theme = Theme::default();
+
+        // With active filters
+        terminal
+            .draw(|frame| {
+                render_status_bar(
+                    frame,
+                    Rect::new(0, 0, 120, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    true,
+                );
+            })
+            .expect("should render status bar with active filters");
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(
+            content.contains("reset filter"),
+            "expected 'reset filter' in status bar: {}",
+            content
+        );
+        assert!(
+            content.contains("filter branch"),
+            "expected 'filter branch' in status bar: {}",
+            content
+        );
+
+        // Without active filters
+        terminal
+            .draw(|frame| {
+                render_status_bar(
+                    frame,
+                    Rect::new(0, 0, 120, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .expect("should render status bar without active filters");
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(
+            !content.contains("reset filter"),
+            "did not expect 'reset filter' when no filters active: {}",
+            content
+        );
+        assert!(
+            content.contains("filter branch"),
+            "expected 'filter branch' in status bar: {}",
+            content
+        );
     }
 }
 
@@ -2962,6 +3068,7 @@ fn render_search_bar_or_status_bar(
     diff_focused: bool,
     has_copied_commits: bool,
     keybindings: &KeybindingConfig,
+    has_active_filters: bool,
 ) {
     if let Some((query, match_count, current_match)) = search_state {
         let match_info = if match_count > 0 {
@@ -3020,6 +3127,7 @@ fn render_search_bar_or_status_bar(
             diff_focused,
             has_copied_commits,
             keybindings,
+            has_active_filters,
         );
     }
 }
@@ -3034,6 +3142,7 @@ fn render_status_bar(
     diff_focused: bool,
     has_copied_commits: bool,
     keybindings: &KeybindingConfig,
+    has_active_filters: bool,
 ) {
     let mut hints: Vec<(&str, &str)> = Vec::new();
     let mut emphasized: Vec<&str> = Vec::new();
@@ -3167,6 +3276,9 @@ fn render_status_bar(
             ContextId::Commits => {
                 if !toggle_head_key.is_empty() {
                     hints.push((toggle_head_key.as_str(), "files"));
+                }
+                if has_active_filters {
+                    hints.push(("esc", "reset filter"));
                 }
                 if has_copied_commits {
                     hints.push(("V", "paste (cherry-pick)"));
