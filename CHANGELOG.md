@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.1-cockpit] - 2026-10-08
+
+### Features
+
+- Sort files by review priority (lockfiles last, configs/schemas second, source files prioritized)
+- Parse commit trailers (`Test-Status:`, `Tests:`, `Test:`, `CI:`) and render visual pass/fail badges in commit details
+- Auto-detect `--commits` capability and optimized zero-latency startup
+
 ## [0.0.38] - 2026-09-15
 
 ### Bug Fixes
