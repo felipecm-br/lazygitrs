@@ -318,6 +318,11 @@ impl GitCommands {
         if include_stats {
             self.populate_commit_file_stats(&mut files, &stats_base);
         }
+        files.sort_by(|a, b| {
+            let pa = crate::model::file::review_priority(&a.name);
+            let pb = crate::model::file::review_priority(&b.name);
+            pa.cmp(&pb).then_with(|| a.name.cmp(&b.name))
+        });
         Ok(files)
     }
 

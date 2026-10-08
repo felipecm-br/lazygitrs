@@ -332,6 +332,7 @@ fn compress_single_child_dirs(nodes: &mut Vec<FileTreeNode>) {
 }
 
 /// Sort path parts so directories appear before files at each level,
+/// then by review priority (core code before tests/docs before lockfiles),
 /// then alphabetically within each group.
 fn sort_dirs_first(a: &[&str], b: &[&str]) -> std::cmp::Ordering {
     for i in 0..a.len().min(b.len()) {
@@ -344,6 +345,13 @@ fn sort_dirs_first(a: &[&str], b: &[&str]) -> std::cmp::Ordering {
                 } else {
                     std::cmp::Ordering::Greater
                 };
+            }
+            if !a_is_dir && !b_is_dir {
+                let pa = crate::model::file::review_priority(a[i]);
+                let pb = crate::model::file::review_priority(b[i]);
+                if pa != pb {
+                    return pa.cmp(&pb);
+                }
             }
             return a[i].cmp(b[i]);
         }

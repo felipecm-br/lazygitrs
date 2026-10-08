@@ -64,7 +64,8 @@ pub fn render_commit_details(
 
     let message = full_message.unwrap_or(&commit.name);
     let co_authors = parse_co_authors(message);
-    let display_message = strip_co_author_trailers(message);
+    let test_badge = parse_test_status_badge(message);
+    let display_message = strip_metadata_trailers(message);
 
     let mut lines: Vec<Line> = Vec::new();
 
@@ -122,6 +123,10 @@ pub fn render_commit_details(
             spans.push(Span::raw(" "));
         }
         lines.push(Line::from(spans));
+    }
+
+    if let Some(ref badge) = test_badge {
+        lines.push(test_badge_line(badge, theme));
     }
 
     // Stat summary goes BEFORE the message so it's always visible without
@@ -224,31 +229,92 @@ fn parse_co_author_line(line: &str) -> Option<CoAuthor> {
     }
 }
 
-fn is_co_author_trailer(line: &str) -> bool {
-    let trimmed = line.trim();
-    trimmed.to_ascii_lowercase().starts_with("co-authored-by:")
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TestStatusBadge {
+    pub passed: bool,
+    pub label: String,
 }
 
-/// Drop `Co-authored-by` trailers (and a blank separator above them) so they
-/// are shown once in the author block instead of duplicated in the body.
-fn strip_co_author_trailers(message: &str) -> String {
+pub fn parse_test_status_badge(message: &str) -> Option<TestStatusBadge> {
+    for line in message.lines() {
+        let trimmed = line.trim();
+        let lower = trimmed.to_ascii_lowercase();
+
+        let val = if let Some(v) = lower.strip_prefix("test-status:") {
+            v.trim()
+        } else if let Some(v) = lower.strip_prefix("tests:") {
+            v.trim()
+        } else if let Some(v) = lower.strip_prefix("test:") {
+            v.trim()
+        } else if let Some(v) = lower.strip_prefix("ci:") {
+            v.trim()
+        } else {
+            continue;
+        };
+
+        if val.is_empty() {
+            continue;
+        }
+
+        let passed = val.contains("pass") || val.contains("ok") || val.contains("success");
+        let orig_val = if let Some((_, v)) = trimmed.split_once(':') {
+            v.trim()
+        } else {
+            val
+        };
+
+        return Some(TestStatusBadge {
+            passed,
+            label: orig_val.to_string(),
+        });
+    }
+    None
+}
+
+fn test_badge_line(badge: &TestStatusBadge, theme: &Theme) -> Line<'static> {
+    let (icon, color) = if badge.passed {
+        ("  ✔ ", theme.diff_add)
+    } else {
+        ("  ✘ ", theme.diff_remove)
+    };
+    Line::from(vec![
+        Span::styled(icon, color.add_modifier(Modifier::BOLD)),
+        Span::styled(
+            format!("Tests: {} ", badge.label),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+        ),
+    ])
+}
+
+fn is_metadata_trailer(line: &str) -> bool {
+    let lower = line.trim().to_ascii_lowercase();
+    lower.starts_with("co-authored-by:")
+        || lower.starts_with("test-status:")
+        || lower.starts_with("tests:")
+        || lower.starts_with("test:")
+        || lower.starts_with("ci:")
+}
+
+/// Drop metadata trailers (Co-authored-by, Test-Status, etc.) so they are rendered
+/// in their dedicated header blocks instead of duplicated in the raw body.
+fn strip_metadata_trailers(message: &str) -> String {
     let lines: Vec<&str> = message.lines().collect();
-    if !lines.iter().any(|l| is_co_author_trailer(l)) {
+    if !lines.iter().any(|l| is_metadata_trailer(l)) {
         return message.to_string();
     }
 
     let mut out: Vec<&str> = Vec::with_capacity(lines.len());
     let mut i = 0;
     while i < lines.len() {
-        if is_co_author_trailer(lines[i]) {
+        if is_metadata_trailer(lines[i]) {
             i += 1;
             continue;
         }
-        // Skip a blank line that only separates body from co-author trailers.
+        // Skip a blank line that only separates body from metadata trailers.
         if lines[i].trim().is_empty() {
             let rest_are_trailers_or_blank = lines[i + 1..]
                 .iter()
-                .all(|l| l.trim().is_empty() || is_co_author_trailer(l));
+                .all(|l| l.trim().is_empty() || is_metadata_trailer(l));
             if rest_are_trailers_or_blank {
                 break;
             }
@@ -261,6 +327,11 @@ fn strip_co_author_trailers(message: &str) -> String {
         out.pop();
     }
     out.join("\n")
+}
+
+#[cfg(test)]
+fn strip_co_author_trailers(message: &str) -> String {
+    strip_metadata_trailers(message)
 }
 
 fn header_line<'a>(commit: &'a Commit, theme: &Theme) -> Line<'a> {
@@ -452,5 +523,29 @@ mod tests {
     fn leaves_message_without_trailers_unchanged() {
         let msg = "Subject\n\nBody\n";
         assert_eq!(strip_co_author_trailers(msg), msg);
+    }
+
+    #[test]
+    fn parses_test_status_badge_variants() {
+        let msg1 = "feat: add feature\n\nTest-Status: pass (41/41 passed)\n";
+        let badge1 = parse_test_status_badge(msg1).expect("expected badge");
+        assert!(badge1.passed);
+        assert_eq!(badge1.label, "pass (41/41 passed)");
+
+        let msg2 = "fix: repair crash\n\nTests: 2 failed\n";
+        let badge2 = parse_test_status_badge(msg2).expect("expected badge");
+        assert!(!badge2.passed);
+        assert_eq!(badge2.label, "2 failed");
+
+        let msg3 = "docs: update guide\n\nCI: success\n";
+        let badge3 = parse_test_status_badge(msg3).expect("expected badge");
+        assert!(badge3.passed);
+        assert_eq!(badge3.label, "success");
+    }
+
+    #[test]
+    fn strips_test_status_and_co_authors_together() {
+        let msg = "Subject\n\nBody\n\nCo-authored-by: Dev <dev@example.com>\nTest-Status: pass (10/10)\n";
+        assert_eq!(strip_metadata_trailers(msg), "Subject\n\nBody");
     }
 }

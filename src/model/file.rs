@@ -201,3 +201,81 @@ impl fmt::Display for FileStatus {
         }
     }
 }
+
+/// Compute review priority tier for a file path.
+/// Tier 1: Core code/schemas/configs (highest review priority).
+/// Tier 2: Tests and documentation.
+/// Tier 3: Lockfiles, snapshots, minified code, binary assets (sink to bottom).
+pub fn review_priority(path: &str) -> u8 {
+    let lower = path.to_ascii_lowercase();
+    let filename = lower.rsplit('/').next().unwrap_or(&lower);
+
+    // Tier 3: Lockfiles, snapshots, minified code, binary assets (sink to bottom)
+    if filename == "cargo.lock"
+        || filename == "package-lock.json"
+        || filename == "pnpm-lock.yaml"
+        || filename == "yarn.lock"
+        || filename == "poetry.lock"
+        || filename == "gemfile.lock"
+        || filename == "composer.lock"
+        || filename == "flake.lock"
+        || filename == "stow-lock.json"
+        || filename.ends_with(".snap")
+        || filename.ends_with(".min.js")
+        || filename.ends_with(".min.css")
+        || filename.ends_with(".map")
+        || filename.ends_with(".svg")
+        || filename.ends_with(".png")
+        || filename.ends_with(".jpg")
+        || filename.ends_with(".jpeg")
+        || filename.ends_with(".ico")
+        || filename.ends_with(".woff")
+        || filename.ends_with(".woff2")
+    {
+        return 3;
+    }
+
+    // Tier 2: Tests and Documentation
+    if lower.contains("/test/")
+        || lower.contains("/tests/")
+        || lower.starts_with("test/")
+        || lower.starts_with("tests/")
+        || filename.contains("_test.")
+        || filename.contains(".test.")
+        || filename.contains("_spec.")
+        || filename.contains(".spec.")
+        || lower.contains("/docs/")
+        || lower.starts_with("docs/")
+        || filename.ends_with(".md")
+        || filename.ends_with(".txt")
+    {
+        return 2;
+    }
+
+    // Tier 1: Core application code, schemas, config (highest priority)
+    1
+}
+
+#[cfg(test)]
+mod review_priority_tests {
+    use super::*;
+
+    #[test]
+    fn test_review_priority_tiers() {
+        assert_eq!(review_priority("src/main.rs"), 1);
+        assert_eq!(review_priority("src/api/routes.ts"), 1);
+        assert_eq!(review_priority("Cargo.toml"), 1);
+
+        assert_eq!(review_priority("tests/integration_test.rs"), 2);
+        assert_eq!(review_priority("src/service.test.ts"), 2);
+        assert_eq!(review_priority("docs/README.md"), 2);
+        assert_eq!(review_priority("README.md"), 2);
+
+        assert_eq!(review_priority("Cargo.lock"), 3);
+        assert_eq!(review_priority("package-lock.json"), 3);
+        assert_eq!(review_priority("pnpm-lock.yaml"), 3);
+        assert_eq!(review_priority("assets/logo.svg"), 3);
+        assert_eq!(review_priority("bundle.min.js"), 3);
+    }
+}
+
