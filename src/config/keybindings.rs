@@ -130,6 +130,8 @@ pub struct UniversalKeybinding {
     pub toggle_diff_view_layout: String,
     #[serde(rename = "toggleWorkingTreeAndHead")]
     pub toggle_working_tree_and_head: String,
+    #[serde(rename = "quickAiNote")]
+    pub quick_ai_note: String,
 }
 
 impl Default for UniversalKeybinding {
@@ -187,6 +189,7 @@ impl Default for UniversalKeybinding {
             custom_command_prompt: ":".into(),
             toggle_diff_view_layout: "\\".into(),
             toggle_working_tree_and_head: "<c-g>".into(),
+            quick_ai_note: "<c-n>".into(),
         }
     }
 }

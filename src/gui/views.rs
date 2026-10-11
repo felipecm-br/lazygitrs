@@ -2863,6 +2863,7 @@ fn render_status_bar(
             hints.push(("{/}", "prev/next hunk"));
         }
         hints.push(("[/]", "side view"));
+        hints.push(("<c-n>", "agent note"));
         let view_layout_hint = match diff_view.view_layout {
             DiffViewLayout::SideBySide => "unified view",
             DiffViewLayout::Unified => "split view",
@@ -2882,6 +2883,7 @@ fn render_status_bar(
                 hints.extend([
                     ("c", "commit"),
                     ("a", "stage all"),
+                    ("<c-n>", "agent note"),
                     ("space", "toggle"),
                     ("`", "tree"),
                     ("\\", view_layout_hint),

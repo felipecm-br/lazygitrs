@@ -192,7 +192,9 @@ fn resolve_xdg_state_path(repo_path: &Path) -> std::path::PathBuf {
             std::path::PathBuf::from(home).join(".local").join("state")
         });
 
-    let canonical = repo_path.canonicalize().unwrap_or_else(|_| repo_path.to_path_buf());
+    let canonical = repo_path
+        .canonicalize()
+        .unwrap_or_else(|_| repo_path.to_path_buf());
     let mut hasher = DefaultHasher::new();
     canonical.hash(&mut hasher);
     let hash = hasher.finish();
@@ -369,7 +371,11 @@ mod tests {
         std::fs::create_dir_all(&wt_root).unwrap();
 
         let dot_git_file = wt_root.join(".git");
-        std::fs::write(&dot_git_file, format!("gitdir: {}\n", worktree_gitdir.display())).unwrap();
+        std::fs::write(
+            &dot_git_file,
+            format!("gitdir: {}\n", worktree_gitdir.display()),
+        )
+        .unwrap();
 
         let resolved = resolve_git_dir(&wt_root);
         assert_eq!(resolved, Some(worktree_gitdir.clone()));
@@ -404,7 +410,10 @@ mod tests {
 
         let canonical = tmp.path().join(".git/info/lines.json");
         assert!(canonical.exists());
-        assert!(!legacy.exists(), "Legacy .lines.json in root must be removed on save");
+        assert!(
+            !legacy.exists(),
+            "Legacy .lines.json in root must be removed on save"
+        );
 
         let reloaded = load(tmp.path());
         assert_eq!(reloaded.notes.len(), 1);

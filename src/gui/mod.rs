@@ -3855,6 +3855,15 @@ impl Gui {
             return Ok(());
         }
 
+        // Quick AI Review Note
+        if matches_key(key, &keybindings.universal.quick_ai_note)
+            || (key.modifiers == KeyModifiers::CONTROL
+                && (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N')))
+        {
+            self.open_quick_ai_note_prompt();
+            return Ok(());
+        }
+
         // Number keys 1-5 to jump to window (press again to cycle tabs)
         if key.modifiers == KeyModifiers::NONE
             && let KeyCode::Char(c @ '1'..='5') = key.code
@@ -4517,6 +4526,15 @@ impl Gui {
                 && (key.code == KeyCode::Char('g') || key.code == KeyCode::Char('G')))
         {
             self.toggle_working_tree_and_head();
+            return Ok(());
+        }
+
+        // Quick AI Review Note
+        if matches_key(key, &keybindings.universal.quick_ai_note)
+            || (key.modifiers == KeyModifiers::CONTROL
+                && (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N')))
+        {
+            self.open_quick_ai_note_prompt();
             return Ok(());
         }
 
@@ -6545,6 +6563,10 @@ impl Gui {
                     kb.universal.custom_command_prompt.clone(),
                     "Execute shell command".into(),
                 ),
+                CommandEntry::keybinding(
+                    kb.universal.quick_ai_note.clone(),
+                    "Quick AI review note".into(),
+                ),
                 CommandEntry::keybinding("?".into(), "Show command palette".into()),
                 CommandEntry::action(
                     "".into(),
@@ -6618,6 +6640,10 @@ impl Gui {
                     CommandEntry::keybinding(
                         kb.universal.undo_revert_block.clone(),
                         "Undo last revert (session)".into(),
+                    ),
+                    CommandEntry::keybinding(
+                        kb.universal.quick_ai_note.clone(),
+                        "Quick AI review note".into(),
                     ),
                     CommandEntry::keybinding("<c-f>".into(), "Grep diff contents".into()),
                 ],
@@ -9382,6 +9408,144 @@ impl Gui {
         false
     }
 
+    pub fn open_quick_ai_note_prompt(&mut self) {
+        let ai_config = self.config.user_config.ai_notes.clone();
+        if !ai_config.enabled {
+            self.show_error(
+                "AI Notes Not Configured",
+                anyhow::anyhow!(
+                    "Set `aiNotes.enabled` to true in config.yml to enable sending notes to an AI session."
+                ),
+            );
+            return;
+        }
+
+        // Determine target file and line
+        let (target_file, target_line, panel) = if self.diff_focused {
+            if !self.diff_view.lines.is_empty() {
+                let line_idx = if let Some((idx, _)) = self.diff_view.hovered_line {
+                    idx
+                } else {
+                    self.diff_view
+                        .scroll_offset
+                        .min(self.diff_view.lines.len().saturating_sub(1))
+                };
+                let p = if let Some((_, panel)) = self.diff_view.hovered_line {
+                    panel
+                } else {
+                    crate::pager::side_by_side::DiffPanel::New
+                };
+                let file = self.diff_view.file_at_line(line_idx).to_string();
+                let line = self.diff_view.file_line_number(line_idx, p).unwrap_or(1);
+                (file, line, p)
+            } else if !self.diff_view.filename.is_empty() {
+                (
+                    self.diff_view.filename.clone(),
+                    1,
+                    crate::pager::side_by_side::DiffPanel::New,
+                )
+            } else {
+                (
+                    "".to_string(),
+                    1,
+                    crate::pager::side_by_side::DiffPanel::New,
+                )
+            }
+        } else {
+            match self.context_mgr.active() {
+                ContextId::Files => {
+                    let selected = self.context_mgr.selected(ContextId::Files);
+                    let model = self.model.lock().unwrap();
+                    let file = model
+                        .files
+                        .get(selected)
+                        .map(|f| f.name.clone())
+                        .unwrap_or_default();
+                    (file, 1, crate::pager::side_by_side::DiffPanel::New)
+                }
+                ContextId::CommitFiles | ContextId::BranchCommitFiles | ContextId::StashFiles => {
+                    let selected = self.context_mgr.selected(self.context_mgr.active());
+                    let model = self.model.lock().unwrap();
+                    let file = model
+                        .commit_files
+                        .get(selected)
+                        .map(|f| f.name.clone())
+                        .unwrap_or_default();
+                    (file, 1, crate::pager::side_by_side::DiffPanel::New)
+                }
+                _ => (
+                    "".to_string(),
+                    1,
+                    crate::pager::side_by_side::DiffPanel::New,
+                ),
+            }
+        };
+
+        if target_file.is_empty() {
+            self.show_error(
+                "Quick AI Note",
+                anyhow::anyhow!("No file selected. Focus a file or diff line to send an AI note."),
+            );
+            return;
+        }
+
+        let panel_str = match panel {
+            crate::pager::side_by_side::DiffPanel::Old => "Old",
+            crate::pager::side_by_side::DiffPanel::New => "New",
+        };
+
+        let title = if target_line > 1 {
+            format!("Quick Note for AI Agent [{}:{}]", target_file, target_line)
+        } else {
+            format!("Quick Note for AI Agent [{}]", target_file)
+        };
+
+        let file_path = target_file.clone();
+        self.popup = PopupState::Input {
+            title,
+            textarea: crate::gui::popup::make_textarea(""),
+            on_confirm: Box::new(move |gui, input| {
+                let comment = input.trim().to_string();
+                if comment.is_empty() {
+                    return Ok(());
+                }
+
+                // Create and persist note
+                let id = format!(
+                    "{}-{}-{}-{}",
+                    file_path,
+                    target_line,
+                    panel_str,
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_nanos())
+                        .unwrap_or(0)
+                );
+
+                let mut lines_file = crate::pager::notes_store::load(gui.git.repo_path());
+                lines_file
+                    .notes
+                    .push(crate::pager::notes_store::LinesEntry::new_user(
+                        id.clone(),
+                        file_path.clone(),
+                        target_line,
+                        panel_str,
+                        comment,
+                    ));
+                crate::pager::notes_store::save(gui.git.repo_path(), lines_file);
+                gui.diff_view.load_notes(gui.git.repo_path());
+
+                // Dispatch immediately to AI session
+                gui.notify_ai_for_note(id);
+
+                gui.needs_refresh = true;
+                Ok(())
+            }),
+            is_commit: false,
+            confirm_focused: false,
+        };
+    }
+
     /// Send a user note to the AI session.
     ///
     /// Delivery priority:
@@ -9418,6 +9582,14 @@ impl Gui {
                 let line = self.diff_view.file_line_number(i, panel).unwrap_or(0);
                 note_info = Some((file, line, note.text.clone()));
                 break;
+            }
+        }
+
+        // If not found in current diff view lines, look up in .lines.json
+        if note_info.is_none() {
+            let lines_file = crate::pager::notes_store::load(self.git.repo_path());
+            if let Some(entry) = lines_file.notes.iter().find(|n| n.id == note_id) {
+                note_info = Some((entry.file.clone(), entry.line, entry.comment.clone()));
             }
         }
 
@@ -9509,6 +9681,16 @@ impl Gui {
                             }
                         }
                     }
+                    if let Ok(home) = std::env::var("HOME") {
+                        let script =
+                            std::path::PathBuf::from(home).join(".local/bin/agent-note.sh");
+                        if script.exists() {
+                            return Some(format!(
+                                "\"{}\" \"{{{{workspace_path}}}}\" \"{{{{prompt}}}}\"",
+                                script.display()
+                            ));
+                        }
+                    }
                     None
                 });
 
@@ -9574,6 +9756,17 @@ impl Gui {
                     .stderr(std::process::Stdio::null())
                     .spawn(),
             };
+
+            // Visual telemetry & confirmation banner
+            if std::env::var("TMUX").is_ok() {
+                let msg = format!("󰊢 AI Note sent for {}:{}", file, line);
+                let _ = std::process::Command::new("tmux")
+                    .args(["display-message", &msg])
+                    .spawn();
+            }
+            let _ = std::process::Command::new("acpd-cli")
+                .args(["msg", &format!("󰊢 AI Note sent for {}:{}", file, line)])
+                .spawn();
         });
     }
 
@@ -9743,11 +9936,7 @@ impl Gui {
         // Load existing note text if editing.
         if !editing_id.is_empty() {
             let lines_file = crate::pager::notes_store::load(self.git.repo_path());
-            if let Some(note) = lines_file
-                .notes
-                .iter()
-                .find(|c| c.id == editing_id)
-            {
+            if let Some(note) = lines_file.notes.iter().find(|c| c.id == editing_id) {
                 textarea.insert_str(&note.comment);
             }
         }
@@ -11099,6 +11288,51 @@ mod terminal_mouse_tests {
         let ctrl_t = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);
         gui2.handle_key(ctrl_t).unwrap();
         assert_eq!(gui2.context_mgr.active(), ContextId::Commits);
+    }
+
+    #[test]
+    fn ctrl_n_key_event_opens_quick_ai_note_prompt() {
+        let repo = TempRepo::new("ctrl-n-quick-ai-note");
+        std::fs::write(repo.path().join("test.txt"), "hello world\n").unwrap();
+        let mut config = crate::config::AppConfig::default();
+        config.user_config.ai_notes.enabled = true;
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        // Populate model files
+        {
+            let mut model = gui.model.lock().unwrap();
+            model.files.push(crate::model::file::File {
+                name: "test.txt".into(),
+                display_name: "test.txt".into(),
+                status: crate::model::file::FileStatus::Modified,
+                has_staged_changes: false,
+                has_unstaged_changes: true,
+                tracked: true,
+                added: false,
+                deleted: false,
+                has_merge_conflicts: false,
+                short_status: " M".into(),
+                hunk_count: 1,
+                additions: 1,
+                deletions: 0,
+            });
+        }
+
+        // Send Ctrl+n in Files view
+        let ctrl_n = KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL);
+        gui.handle_key(ctrl_n).unwrap();
+        assert!(matches!(gui.popup, PopupState::Input { .. }));
+
+        // Send Esc to cancel popup
+        gui.popup = PopupState::None;
+
+        // In Diff view
+        gui.diff_focused = true;
+        gui.diff_view.filename = "test.txt".to_string();
+        let ctrl_n_upper = KeyEvent::new(KeyCode::Char('N'), KeyModifiers::CONTROL);
+        gui.handle_key(ctrl_n_upper).unwrap();
+        assert!(matches!(gui.popup, PopupState::Input { .. }));
     }
 }
 

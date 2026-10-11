@@ -451,6 +451,7 @@ fn render_status_bar(
             ("Tab", "cycle"),
             ("1-4", "panel"),
             ("<c-s>", "swap"),
+            ("<c-n>", "agent note"),
             ("`", "tree"),
             ("\\", view_layout_hint),
         ];

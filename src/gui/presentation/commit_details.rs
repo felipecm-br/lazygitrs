@@ -545,7 +545,8 @@ mod tests {
 
     #[test]
     fn strips_test_status_and_co_authors_together() {
-        let msg = "Subject\n\nBody\n\nCo-authored-by: Dev <dev@example.com>\nTest-Status: pass (10/10)\n";
+        let msg =
+            "Subject\n\nBody\n\nCo-authored-by: Dev <dev@example.com>\nTest-Status: pass (10/10)\n";
         assert_eq!(strip_metadata_trailers(msg), "Subject\n\nBody");
     }
 }

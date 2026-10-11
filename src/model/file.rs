@@ -278,4 +278,3 @@ mod review_priority_tests {
         assert_eq!(review_priority("bundle.min.js"), 3);
     }
 }
-

@@ -9,8 +9,8 @@ use crate::config::keybindings::matches_key;
 use crate::git::rebase::RebaseAction;
 use crate::gui::Gui;
 use crate::gui::popup::{
-    BodySoftWrap, ChecklistItem, CommitInputFocus, CommitInputKind, MenuItem,
-    MessageKind, PopupState, make_textarea,
+    BodySoftWrap, ChecklistItem, CommitInputFocus, CommitInputKind, MenuItem, MessageKind,
+    PopupState, make_textarea,
 };
 use crate::model::Branch;
 use crate::os::platform::Platform;
