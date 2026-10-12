@@ -33,6 +33,14 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
         return super::diff_grep::open_diff_grep_picker(gui);
     }
 
+    // return to cockpit if requested
+    if gui.is_return_to_cockpit_key(key) {
+        gui.diff_mode.exit();
+        gui.quit_reason = crate::gui::QuitReason::ReturnToCockpit;
+        gui.should_quit = true;
+        return Ok(());
+    }
+
     // q to exit diff mode
     let kb = &gui.config.user_config.keybinding;
     if crate::gui::matches_key(key, &kb.universal.quit)

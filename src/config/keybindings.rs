@@ -132,6 +132,8 @@ pub struct UniversalKeybinding {
     pub toggle_working_tree_and_head: String,
     #[serde(rename = "quickAiNote")]
     pub quick_ai_note: String,
+    #[serde(rename = "returnToCockpit", default)]
+    pub return_to_cockpit: String,
 }
 
 impl Default for UniversalKeybinding {
@@ -190,6 +192,7 @@ impl Default for UniversalKeybinding {
             toggle_diff_view_layout: "\\".into(),
             toggle_working_tree_and_head: "<c-g>".into(),
             quick_ai_note: "<c-n>".into(),
+            return_to_cockpit: "".into(),
         }
     }
 }

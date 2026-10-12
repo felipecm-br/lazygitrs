@@ -1687,6 +1687,35 @@ mod tests {
             "Expected 'ctrl+t head' with custom keybinding, got: {}",
             content
         );
+
+        // 7. returnToCockpit keybinding (e.g. g) -> shows "g cockpit"
+        let mut cockpit_kb = KeybindingConfig::default();
+        cockpit_kb.universal.return_to_cockpit = "g".into();
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &cockpit_kb,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("g cockpit"),
+            "Expected 'g cockpit' with returnToCockpit keybinding, got: {}",
+            content
+        );
     }
 
     #[test]
@@ -2812,6 +2841,13 @@ fn render_status_bar(
     let mut emphasized: Vec<&str> = Vec::new();
     let open_log_menu_key = format_key_hint(&keybindings.commits.open_log_menu);
     let toggle_head_key = format_key_hint(&keybindings.universal.toggle_working_tree_and_head);
+    let return_to_cockpit_key = if !keybindings.universal.return_to_cockpit.is_empty() {
+        Some(format_key_hint(&keybindings.universal.return_to_cockpit))
+    } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
+        Some("g".to_string())
+    } else {
+        None
+    };
 
     // When in a special state (rebasing/merging/cherry-picking), show those options prominently
     if model.is_rebasing {
@@ -3000,6 +3036,9 @@ fn render_status_bar(
     }
 
     // Global hints (always last)
+    if let Some(ref k) = return_to_cockpit_key {
+        hints.push((k.as_str(), "cockpit"));
+    }
     hints.extend([
         ("q", "quit"),
         (":", "shell"),

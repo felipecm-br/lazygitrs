@@ -45,7 +45,7 @@ impl App {
         })
     }
 
-    pub fn run(mut self) -> Result<()> {
+    pub fn run(mut self) -> Result<crate::gui::QuitReason> {
         let git = GitCommands::new(&self.repo_path).context("Failed to initialize git commands")?;
 
         // Update recent repos
@@ -62,8 +62,6 @@ impl App {
             self.filter_path,
             self.start_in_commits,
         )?;
-        gui.run()?;
-
-        Ok(())
+        gui.run()
     }
 }

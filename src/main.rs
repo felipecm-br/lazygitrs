@@ -194,9 +194,14 @@ fn main() {
         cli.commits,
     ) {
         Ok(app) => {
-            if let Err(e) = app.run() {
-                eprintln!("Error: {:#}", e);
-                std::process::exit(1);
+            match app.run() {
+                Ok(quit_reason) => {
+                    std::process::exit(quit_reason.exit_code());
+                }
+                Err(e) => {
+                    eprintln!("Error: {:#}", e);
+                    std::process::exit(1);
+                }
             }
         }
         Err(e) => {

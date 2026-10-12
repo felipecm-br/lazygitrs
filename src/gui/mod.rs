@@ -565,6 +565,22 @@ struct CommitPageResult {
 
 const COMMIT_PAGE_PREFETCH_THRESHOLD: usize = 100;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuitReason {
+    #[default]
+    Normal,
+    ReturnToCockpit,
+}
+
+impl QuitReason {
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            QuitReason::Normal => 0,
+            QuitReason::ReturnToCockpit => 10,
+        }
+    }
+}
+
 pub struct Gui {
     pub config: Arc<AppConfig>,
     pub git: Arc<GitCommands>,
@@ -578,6 +594,7 @@ pub struct Gui {
     pub command_log: crate::os::cmd::CommandLog,
     pub show_command_log: bool,
     pub should_quit: bool,
+    pub quit_reason: QuitReason,
     pub needs_refresh: bool,
     pub needs_files_refresh: bool,
     pub needs_diff_refresh: bool,
@@ -1080,6 +1097,7 @@ impl Gui {
             command_log,
             show_command_log: show_command_log_default,
             should_quit: false,
+            quit_reason: QuitReason::default(),
             needs_refresh: false,
             needs_files_refresh: false,
             needs_diff_refresh: true,
@@ -1214,7 +1232,7 @@ impl Gui {
         theme
     }
 
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<QuitReason> {
         let (mut terminal, keyboard_enhanced) = setup_terminal()?;
         // Continuous reader thread: reassembly needs reads between frames
         // (see `input` module). One event-per-frame is what leaked ↑ as 'A'.
@@ -1229,7 +1247,8 @@ impl Gui {
         let result = self.main_loop(&mut terminal, &input, &mut keyboard_enhanced);
 
         restore_terminal(&mut terminal, keyboard_enhanced)?;
-        result
+        result?;
+        Ok(self.quit_reason)
     }
 
     /// Queue an editor launch. Terminal editors (`suspend: true`) run after the
@@ -3734,6 +3753,23 @@ impl Gui {
         Ok(false)
     }
 
+    pub fn is_return_to_cockpit_key(&self, key: KeyEvent) -> bool {
+        let keybindings = &self.config.user_config.keybinding;
+        let binding = if !keybindings.universal.return_to_cockpit.is_empty() {
+            Some(keybindings.universal.return_to_cockpit.as_str())
+        } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
+            Some("g")
+        } else {
+            None
+        };
+
+        if let Some(binding) = binding {
+            matches_key(key, binding)
+        } else {
+            false
+        }
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.handle_ai_commit_cancel_key(key) {
             return Ok(());
@@ -3838,10 +3874,17 @@ impl Gui {
             return self.handle_diff_focused_key(key);
         }
 
+        if self.is_return_to_cockpit_key(key) {
+            self.quit_reason = QuitReason::ReturnToCockpit;
+            self.should_quit = true;
+            return Ok(());
+        }
+
         // Global keybindings
         if matches_key(key, &keybindings.universal.quit)
             || matches_key(key, &keybindings.universal.quit_alt1)
         {
+            self.quit_reason = QuitReason::Normal;
             self.should_quit = true;
             return Ok(());
         }
@@ -4641,9 +4684,16 @@ impl Gui {
             return Ok(());
         }
 
+        if self.is_return_to_cockpit_key(key) {
+            self.quit_reason = QuitReason::ReturnToCockpit;
+            self.should_quit = true;
+            return Ok(());
+        }
+
         if matches_key(key, &keybindings.universal.quit)
             || matches_key(key, &keybindings.universal.quit_alt1)
         {
+            self.quit_reason = QuitReason::Normal;
             self.should_quit = true;
             return Ok(());
         }
@@ -11322,6 +11372,64 @@ mod terminal_mouse_tests {
         let ctrl_n_upper = KeyEvent::new(KeyCode::Char('N'), KeyModifiers::CONTROL);
         gui.handle_key(ctrl_n_upper).unwrap();
         assert!(matches!(gui.popup, PopupState::Input { .. }));
+    }
+
+    #[test]
+    fn return_to_cockpit_key_triggers_quit_with_cockpit_reason() {
+        let repo = TempRepo::new("return-to-cockpit");
+        let mut config = crate::config::AppConfig::default();
+        config.user_config.keybinding.universal.return_to_cockpit = "g".into();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        assert!(!gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::Normal);
+
+        // Press 'g'
+        let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        gui.handle_key(g_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::ReturnToCockpit);
+        assert_eq!(gui.quit_reason.exit_code(), 10);
+    }
+
+    #[test]
+    fn return_to_cockpit_via_env_var() {
+        let repo = TempRepo::new("return-to-cockpit-env");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        unsafe { std::env::set_var("LAZYGITRS_COCKPIT", "1") };
+
+        assert!(!gui.should_quit);
+
+        // Press 'g' while diff is focused
+        gui.diff_focused = true;
+        let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
+        gui.handle_key(g_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::ReturnToCockpit);
+        assert_eq!(gui.quit_reason.exit_code(), 10);
+
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+    }
+
+    #[test]
+    fn normal_quit_sets_normal_quit_reason() {
+        let repo = TempRepo::new("normal-quit");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        let q_key = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
+        gui.handle_key(q_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::Normal);
+        assert_eq!(gui.quit_reason.exit_code(), 0);
     }
 }
 

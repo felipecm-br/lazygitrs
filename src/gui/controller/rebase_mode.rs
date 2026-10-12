@@ -22,6 +22,13 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
 // ── Planning phase ──────────────────────────────────────────────────────
 
 fn handle_planning_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
+    if gui.is_return_to_cockpit_key(key) {
+        gui.rebase_mode.exit();
+        gui.quit_reason = crate::gui::QuitReason::ReturnToCockpit;
+        gui.should_quit = true;
+        return Ok(());
+    }
+
     // q or Esc: abort / exit without rebasing
     let kb = &gui.config.user_config.keybinding;
     if crate::gui::matches_key(key, &kb.universal.quit)
