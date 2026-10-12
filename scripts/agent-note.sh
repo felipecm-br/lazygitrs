@@ -36,16 +36,7 @@ if [[ -n "$MATCHING_PANE" ]]; then
     tmux set-buffer -b agent-note-buf "$PROMPT" 2>/dev/null || true
     tmux paste-buffer -b agent-note-buf -t "$MATCHING_PANE" -d 2>/dev/null || true
     tmux send-keys -t "$MATCHING_PANE" Enter 2>/dev/null || true
-
-    if command -v acpd-cli >/dev/null 2>&1; then
-        acpd-cli msg "󰊢 Note delivered to agent ($MATCHING_PANE)" >/dev/null 2>&1 || true
-    else
-        tmux display-message "󰊢 Note delivered to agent ($MATCHING_PANE)" 2>/dev/null || true
-    fi
+    # Note delivered silently to avoid status bar flashing in tmux popups
 else
-    if command -v acpd-cli >/dev/null 2>&1; then
-        acpd-cli msg "󰊢 AI Note saved (no active agent pane found)" >/dev/null 2>&1 || true
-    else
-        tmux display-message "󰊢 AI Note saved (no active agent pane found)" 2>/dev/null || true
-    fi
+    echo "AI Note saved (no active agent pane found for $TARGET_DIR)" >&2
 fi

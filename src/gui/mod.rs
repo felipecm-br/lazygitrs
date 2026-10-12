@@ -9756,17 +9756,6 @@ impl Gui {
                     .stderr(std::process::Stdio::null())
                     .spawn(),
             };
-
-            // Visual telemetry & confirmation banner
-            if std::env::var("TMUX").is_ok() {
-                let msg = format!("󰊢 AI Note sent for {}:{}", file, line);
-                let _ = std::process::Command::new("tmux")
-                    .args(["display-message", &msg])
-                    .spawn();
-            }
-            let _ = std::process::Command::new("acpd-cli")
-                .args(["msg", &format!("󰊢 AI Note sent for {}:{}", file, line)])
-                .spawn();
         });
     }
 
