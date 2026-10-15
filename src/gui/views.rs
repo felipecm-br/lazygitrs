@@ -2879,6 +2879,9 @@ fn render_status_bar(
                 hints.insert(idx, (toggle_head_key.as_str(), "head"));
                 idx += 1;
             }
+            hints.insert(idx, ("space", "stage hunk"));
+            emphasized.push("space");
+            idx += 1;
             if has_selection {
                 hints.insert(idx, ("enter", "hunk menu"));
                 emphasized.push("enter");

@@ -1421,6 +1421,9 @@ impl Gui {
                         self.start_in_diff = false;
                         self.diff_focused = true;
                         self.screen_mode = ScreenMode::Full;
+                        if !self.diff_view.hunk_starts.is_empty() {
+                            self.diff_view.selected_revert_hunk = Some(0);
+                        }
 
                         if let Some(ref target_file) = self.start_file_filter {
                             let model = self.model.lock().unwrap();
@@ -3755,19 +3758,40 @@ impl Gui {
 
     pub fn is_return_to_cockpit_key(&self, key: KeyEvent) -> bool {
         let keybindings = &self.config.user_config.keybinding;
-        let binding = if !keybindings.universal.return_to_cockpit.is_empty() {
-            Some(keybindings.universal.return_to_cockpit.as_str())
-        } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
-            Some("g")
-        } else {
-            None
-        };
 
-        if let Some(binding) = binding {
-            matches_key(key, binding)
-        } else {
-            false
+        // When launched from Cockpit, Esc at the root files list returns to cockpit
+        if std::env::var("LAZYGITRS_COCKPIT").is_ok()
+            && !self.diff_focused
+            && !self.diff_mode.active
+            && matches!(self.context_mgr.active(), ContextId::Files)
+            && matches_key(key, &keybindings.universal.return_key)
+        {
+            return true;
         }
+
+        // 'g' / return_to_cockpit binding: active in Files context, diff focus, and diff mode,
+        // but excluded from Commits / Stash so their native reset / pop bindings work.
+        let can_use_return_key = matches!(self.context_mgr.active(), ContextId::Files)
+            || self.diff_focused
+            || self.diff_mode.active;
+
+        if can_use_return_key {
+            let binding = if !keybindings.universal.return_to_cockpit.is_empty() {
+                Some(keybindings.universal.return_to_cockpit.as_str())
+            } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
+                Some("g")
+            } else {
+                None
+            };
+
+            if let Some(binding) = binding {
+                if matches_key(key, binding) {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -3883,6 +3907,16 @@ impl Gui {
         // Global keybindings
         if matches_key(key, &keybindings.universal.quit)
             || matches_key(key, &keybindings.universal.quit_alt1)
+        {
+            self.quit_reason = QuitReason::Normal;
+            self.should_quit = true;
+            return Ok(());
+        }
+
+        // Universal return_key (Esc): When at the root files list without sub-contexts,
+        // Esc dismisses the standalone popup (if launched from Cockpit, is_return_to_cockpit_key already caught it above).
+        if matches!(self.context_mgr.active(), ContextId::Files)
+            && matches_key(key, &keybindings.universal.return_key)
         {
             self.quit_reason = QuitReason::Normal;
             self.should_quit = true;
@@ -4701,11 +4735,10 @@ impl Gui {
         if matches_key(key, &keybindings.universal.return_key) {
             if self.diff_view.selected_note.is_some() {
                 self.diff_view.selected_note = None;
-            } else if self.diff_view.selected_revert_hunk.is_some() {
-                self.diff_view.selected_revert_hunk = None;
             } else if !self.diff_view.search_query.is_empty() {
                 self.diff_view.clear_search();
             } else {
+                self.diff_view.selected_revert_hunk = None;
                 self.diff_focused = false;
                 if self.started_in_diff_mode {
                     self.started_in_diff_mode = false;
@@ -4745,6 +4778,38 @@ impl Gui {
         }
 
         match key.code {
+            KeyCode::Char(' ') if key.modifiers.is_empty() => {
+                if self.context_mgr.active() == ContextId::Files {
+                    let hunk_idx = self
+                        .diff_view
+                        .selected_revert_hunk
+                        .or(self.diff_view.hovered_revert_hunk)
+                        .or_else(|| {
+                            if !self.diff_view.hunk_starts.is_empty() {
+                                Some(0)
+                            } else {
+                                None
+                            }
+                        });
+
+                    if let Some(hunk_idx) = hunk_idx {
+                        if hunk_idx < self.diff_view.hunk_starts.len() {
+                            let is_staged = self.diff_view.is_staged_hunk(hunk_idx);
+                            if !is_staged {
+                                let _ = self.stage_selected_file_hunk(hunk_idx);
+                            } else {
+                                let _ = self.unstage_selected_file_hunk(hunk_idx);
+                            }
+                            self.diff_view.cycle_next_revert_hunk();
+                        } else if self.diff_view.hunk_starts.is_empty() {
+                            let _ = self.stage_selected_file_hunk(0);
+                        }
+                    } else if self.diff_view.hunk_starts.is_empty() {
+                        let _ = self.stage_selected_file_hunk(0);
+                    }
+                }
+                return Ok(());
+            }
             KeyCode::Char('c') => {
                 if !self.diff_view.lines.is_empty() {
                     let line_idx = if let Some((idx, _)) = self.diff_view.hovered_line {
@@ -11415,6 +11480,101 @@ mod terminal_mouse_tests {
         assert_eq!(gui.quit_reason.exit_code(), 10);
 
         unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+    }
+
+    #[test]
+    fn esc_at_root_files_returns_to_cockpit_when_cockpit_env_set() {
+        let repo = TempRepo::new("esc-cockpit-env");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        unsafe { std::env::set_var("LAZYGITRS_COCKPIT", "1") };
+
+        assert!(!gui.should_quit);
+
+        // Press Esc while at root files list
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        gui.handle_key(esc_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::ReturnToCockpit);
+        assert_eq!(gui.quit_reason.exit_code(), 10);
+
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+    }
+
+    #[test]
+    fn esc_at_root_files_quits_normally_when_no_cockpit_env() {
+        let repo = TempRepo::new("esc-normal-quit");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        assert!(!gui.should_quit);
+
+        // Press Esc while at root files list without LAZYGITRS_COCKPIT
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        gui.handle_key(esc_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::Normal);
+        assert_eq!(gui.quit_reason.exit_code(), 0);
+    }
+
+    #[test]
+    fn esc_in_diff_unwinds_to_files_first_then_to_cockpit() {
+        let repo = TempRepo::new("esc-diff-unwind");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        unsafe { std::env::set_var("LAZYGITRS_COCKPIT", "1") };
+
+        // Start in diff focused
+        gui.diff_focused = true;
+        gui.diff_view.selected_revert_hunk = Some(0);
+
+        // 1st Esc: should unwind diff view to files panel without quitting
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        gui.handle_key(esc_key).unwrap();
+
+        assert!(!gui.should_quit);
+        assert!(!gui.diff_focused);
+        assert_eq!(gui.diff_view.selected_revert_hunk, None);
+
+        // 2nd Esc: should exit lazygitrs back to Cockpit (exit code 10)
+        gui.handle_key(esc_key).unwrap();
+
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::ReturnToCockpit);
+        assert_eq!(gui.quit_reason.exit_code(), 10);
+
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+    }
+
+    #[test]
+    fn space_key_in_diff_focused_cycles_to_next_hunk() {
+        let repo = TempRepo::new("space-diff-cycle");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        gui.diff_focused = true;
+        gui.diff_view.hunk_starts = vec![5, 15, 25];
+        gui.diff_view.selected_revert_hunk = Some(0);
+
+        let space_key = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+        gui.handle_key(space_key).unwrap();
+
+        assert_eq!(gui.diff_view.selected_revert_hunk, Some(1));
+
+        gui.handle_key(space_key).unwrap();
+        assert_eq!(gui.diff_view.selected_revert_hunk, Some(2));
+
+        gui.handle_key(space_key).unwrap();
+        // After last hunk, cycles back to 0
+        assert_eq!(gui.diff_view.selected_revert_hunk, Some(0));
     }
 
     #[test]

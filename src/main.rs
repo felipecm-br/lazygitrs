@@ -37,8 +37,8 @@ struct Cli {
     #[arg(long)]
     debug: bool,
 
-    /// Open directly in expanded diff view
-    #[arg(short = 'd', long)]
+    /// Open directly in expanded diff view (patch mode)
+    #[arg(short = 'd', long, alias = "patch")]
     diff: bool,
 
     /// Specific file to focus in diff view (implies --diff)
