@@ -972,18 +972,13 @@ impl Gui {
         let acp_server_url: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(persisted_server_url));
         let acp_notify_command: Arc<Mutex<Option<String>>> =
             Arc::new(Mutex::new(persisted_notify_cmd));
-        let sse_tx = if is_popup {
-            let (tx, _) = tokio::sync::broadcast::channel(16);
-            tx
-        } else {
-            crate::acp::spawn_server(
-                acp_tx,
-                git.repo_path().to_path_buf(),
-                acp_session_id.clone(),
-                acp_server_url.clone(),
-                acp_notify_command.clone(),
-            )
-        };
+        let sse_tx = crate::acp::spawn_server(
+            acp_tx,
+            git.repo_path().to_path_buf(),
+            acp_session_id.clone(),
+            acp_server_url.clone(),
+            acp_notify_command.clone(),
+        );
         let show_file_tree = config
             .app_state
             .show_file_tree
