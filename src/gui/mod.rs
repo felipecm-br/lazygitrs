@@ -4483,7 +4483,11 @@ impl Gui {
                     }
                     return Ok(());
                 }
-                KeyCode::Char('r') | KeyCode::Char('R') => {
+                KeyCode::Char('A') | KeyCode::Char('R') => {
+                    self.notify_ai_for_all_notes();
+                    return Ok(());
+                }
+                KeyCode::Char('r') => {
                     if let Some(ref note_id) = self.diff_view.selected_note.clone() {
                         self.reset_note_status(note_id);
                     }
@@ -4827,6 +4831,11 @@ impl Gui {
             }
             KeyCode::Char('N') => {
                 self.cycle_note(false);
+            }
+            // S / A / R: Send all pending review notes to AI agent
+            KeyCode::Char('S') | KeyCode::Char('A') | KeyCode::Char('R') => {
+                self.notify_ai_for_all_notes();
+                return Ok(());
             }
             KeyCode::Char(',') => {
                 let active = self.context_mgr.active();
@@ -9722,6 +9731,17 @@ impl Gui {
             file, line, note_text
         );
 
+        self.dispatch_prompt_to_ai(prompt, note_id, file, line, note_text);
+    }
+
+    fn dispatch_prompt_to_ai(
+        &self,
+        prompt: String,
+        note_id: String,
+        file: String,
+        line: usize,
+        note_text: String,
+    ) {
         let repo_path = self.git.repo_path().to_path_buf();
         let acp_server_url = Arc::clone(&self.acp_server_url);
         let acp_notify_command = Arc::clone(&self.acp_notify_command);
@@ -9867,6 +9887,85 @@ impl Gui {
                     .spawn(),
             };
         });
+    }
+
+    /// Mark all new review notes as `Sent` in `.lines.json`, format a consolidated review prompt,
+    /// and dispatch to the active AI session.
+    fn notify_ai_for_all_notes(&mut self) {
+        let ai_config = self.config.user_config.ai_notes.clone();
+        if !ai_config.enabled {
+            self.show_error(
+                "AI Notes Not Configured",
+                anyhow::anyhow!(
+                    "Set `aiNotes.enabled` to true in config.yml to enable sending notes to an AI session."
+                ),
+            );
+            return;
+        }
+
+        let mut lines_file = crate::pager::notes_store::load(self.git.repo_path());
+        let pending_notes: Vec<_> = lines_file
+            .notes
+            .iter()
+            .filter(|n| n.status == crate::pager::NoteStatus::New)
+            .cloned()
+            .collect();
+
+        if pending_notes.is_empty() {
+            self.popup = PopupState::Message {
+                title: "No New Notes".to_string(),
+                message: "No pending review notes found to dispatch. All notes are already marked Sent or Resolved.".to_string(),
+                kind: crate::gui::popup::MessageKind::Info,
+            };
+            return;
+        }
+
+        let count = pending_notes.len();
+        let mut prompt = format!(
+            "Please review and fix the following {} code review comment{} from lazygitrs:\n\n",
+            count,
+            if count == 1 { "" } else { "s" }
+        );
+
+        for (idx, note) in pending_notes.iter().enumerate() {
+            prompt.push_str(&format!(
+                "{}. **`{}`** (line {}):\n   > {}\n\n",
+                idx + 1,
+                note.file,
+                note.line,
+                note.comment
+            ));
+        }
+
+        prompt.push_str("Once addressed, run the relevant verification tests and summarize the changes made.");
+
+        // Mark all as sent in lines_file
+        for note in &mut lines_file.notes {
+            if note.status == crate::pager::NoteStatus::New {
+                note.status = crate::pager::NoteStatus::Sent;
+            }
+        }
+        crate::pager::notes_store::save(self.git.repo_path(), lines_file);
+        self.diff_view.load_notes(self.git.repo_path());
+        self.needs_refresh = true;
+
+        self.dispatch_prompt_to_ai(
+            prompt,
+            "all".to_string(),
+            "multiple files".to_string(),
+            0,
+            format!("{} review notes", count),
+        );
+
+        self.popup = PopupState::Message {
+            title: "Review Notes Dispatched".to_string(),
+            message: format!(
+                "Successfully dispatched {} review note{} to the active AI agent.",
+                count,
+                if count == 1 { "" } else { "s" }
+            ),
+            kind: crate::gui::popup::MessageKind::Info,
+        };
     }
 
     /// Push a prompt to the AI CLI's TUI via its HTTP server.
