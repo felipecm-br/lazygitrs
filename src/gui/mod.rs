@@ -9816,7 +9816,7 @@ impl Gui {
                             std::path::PathBuf::from(home).join(".local/bin/agent-note.sh");
                         if script.exists() {
                             return Some(format!(
-                                "\"{}\" \"{{{{workspace_path}}}}\" \"{{{{prompt}}}}\"",
+                                "\"{}\" {{{{workspace_path}}}} {{{{prompt}}}}",
                                 script.display()
                             ));
                         }
