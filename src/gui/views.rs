@@ -2844,7 +2844,7 @@ fn render_status_bar(
     let return_to_cockpit_key = if !keybindings.universal.return_to_cockpit.is_empty() {
         Some(format_key_hint(&keybindings.universal.return_to_cockpit))
     } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
-        Some("g".to_string())
+        Some(format_key_hint(&keybindings.universal.return_key))
     } else {
         None
     };

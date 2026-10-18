@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.2-cockpit] - 2026-10-17
+
+### Features & Refactoring
+
+- Unwind to Cockpit via `Esc` from any root panel (`Files`, `Commits`, `Branches`, `Stash`, `Status`) when launched from Cockpit
+- Free `g` keybinding entirely for native Lazygit navigation and reset commands
+- Update footer status bar hint from `g cockpit` to `esc cockpit`
+
 ## [0.1.1-cockpit] - 2026-10-08
 
 ### Features

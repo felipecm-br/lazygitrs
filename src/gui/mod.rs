@@ -3754,35 +3754,35 @@ impl Gui {
     pub fn is_return_to_cockpit_key(&self, key: KeyEvent) -> bool {
         let keybindings = &self.config.user_config.keybinding;
 
-        // When launched from Cockpit, Esc at the root files list returns to cockpit
+        // When launched from Cockpit, Esc at a root panel (with no active selection/clipboard) returns to cockpit
         if std::env::var("LAZYGITRS_COCKPIT").is_ok()
             && !self.diff_focused
             && !self.diff_mode.active
-            && matches!(self.context_mgr.active(), ContextId::Files)
+            && self.search_query.is_empty()
+            && self.range_select_anchor.is_none()
+            && self.cherry_pick_clipboard.is_empty()
+            && !self.patch_building.active
+            && matches!(
+                self.context_mgr.active(),
+                ContextId::Files
+                    | ContextId::Commits
+                    | ContextId::Branches
+                    | ContextId::Stash
+                    | ContextId::Status
+            )
             && matches_key(key, &keybindings.universal.return_key)
         {
             return true;
         }
 
-        // 'g' / return_to_cockpit binding: active in Files context, diff focus, and diff mode,
-        // but excluded from Commits / Stash so their native reset / pop bindings work.
+        // Optional explicit return_to_cockpit binding if configured by user (disabled by default)
         let can_use_return_key = matches!(self.context_mgr.active(), ContextId::Files)
             || self.diff_focused
             || self.diff_mode.active;
 
-        if can_use_return_key {
-            let binding = if !keybindings.universal.return_to_cockpit.is_empty() {
-                Some(keybindings.universal.return_to_cockpit.as_str())
-            } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
-                Some("g")
-            } else {
-                None
-            };
-
-            if let Some(binding) = binding {
-                if matches_key(key, binding) {
-                    return true;
-                }
+        if can_use_return_key && !keybindings.universal.return_to_cockpit.is_empty() {
+            if matches_key(key, &keybindings.universal.return_to_cockpit) {
+                return true;
             }
         }
 
@@ -11558,16 +11558,23 @@ mod terminal_mouse_tests {
         let repo = TempRepo::new("return-to-cockpit-env");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
-        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, true).unwrap();
 
         unsafe { std::env::set_var("LAZYGITRS_COCKPIT", "1") };
 
         assert!(!gui.should_quit);
+        assert_eq!(gui.context_mgr.active(), ContextId::Commits);
 
-        // Press 'g' while diff is focused
+        // Pressing 'g' when return_to_cockpit is empty does NOT quit to cockpit
         gui.diff_focused = true;
         let g_key = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
         gui.handle_key(g_key).unwrap();
+        assert!(!gui.should_quit);
+
+        // Pressing Esc at root Commits returns to cockpit
+        gui.diff_focused = false;
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        gui.handle_key(esc_key).unwrap();
 
         assert!(gui.should_quit);
         assert_eq!(gui.quit_reason, QuitReason::ReturnToCockpit);
