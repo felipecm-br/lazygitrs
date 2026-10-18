@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.3-cockpit] - 2026-10-18
+
+### Documentation & Governance
+
+- Add storage and worktree hygiene guidelines (`target/` pruning, `awt rm`, and read-only storage auditing via `dev-gc --dry-run`) to `AGENTS.md`
+
 ## [0.1.2-cockpit] - 2026-10-17
 
 ### Features & Refactoring
