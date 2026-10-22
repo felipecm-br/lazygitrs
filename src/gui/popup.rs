@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::KeyEvent;
-use tui_textarea::{CursorMove, TextArea};
+use ratatui_textarea::{CursorMove, TextArea};
 use unicode_width::UnicodeWidthChar;
 
 use super::Gui;
@@ -432,7 +432,7 @@ impl BodySoftWrap {
     /// `wrap_width`, and place the visual cursor where it logically belongs.
     ///
     /// We rebuild the textarea from scratch (rather than mutating in place)
-    /// because tui_textarea's internal viewport/scroll state can get stuck
+    /// because ratatui_textarea's internal viewport/scroll state can get stuck
     /// past the end of content after a terminal resize. A fresh TextArea
     /// always starts with a clean viewport. Prefer [`Self::apply_cursor_into`]
     /// for pure cursor moves so scroll is preserved.

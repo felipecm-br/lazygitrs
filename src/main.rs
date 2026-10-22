@@ -193,17 +193,15 @@ fn main() {
         cli.filter_path,
         cli.commits,
     ) {
-        Ok(app) => {
-            match app.run() {
-                Ok(quit_reason) => {
-                    std::process::exit(quit_reason.exit_code());
-                }
-                Err(e) => {
-                    eprintln!("Error: {:#}", e);
-                    std::process::exit(1);
-                }
+        Ok(app) => match app.run() {
+            Ok(quit_reason) => {
+                std::process::exit(quit_reason.exit_code());
             }
-        }
+            Err(e) => {
+                eprintln!("Error: {:#}", e);
+                std::process::exit(1);
+            }
+        },
         Err(e) => {
             eprintln!("Error: {:#}", e);
             std::process::exit(1);

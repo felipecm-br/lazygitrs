@@ -298,7 +298,7 @@ pub const REVERT_UNDO_STACK_CAP: usize = 20;
 pub struct InlineEdit {
     pub line_idx: usize,
     pub panel: DiffPanel,
-    pub textarea: tui_textarea::TextArea<'static>,
+    pub textarea: ratatui_textarea::TextArea<'static>,
     /// When editing an existing note, its id. Empty for new notes.
     pub editing_id: String,
 }
@@ -346,7 +346,7 @@ pub struct DiffViewState {
     /// Index of the current match (for n/N navigation).
     pub search_match_idx: usize,
     /// Textarea widget for search input.
-    pub search_textarea: Option<tui_textarea::TextArea<'static>>,
+    pub search_textarea: Option<ratatui_textarea::TextArea<'static>>,
     /// Currently selected revert-button hunk index (for keyboard cycling).
     pub selected_revert_hunk: Option<usize>,
     /// Hunk index currently under the mouse cursor (for tooltip rendering).
@@ -496,7 +496,7 @@ impl DiffViewState {
         self.search_query.clear();
         self.search_matches.clear();
         self.search_match_idx = 0;
-        let mut ta = tui_textarea::TextArea::default();
+        let mut ta = ratatui_textarea::TextArea::default();
         ta.set_cursor_line_style(Style::default());
         self.search_textarea = Some(ta);
     }

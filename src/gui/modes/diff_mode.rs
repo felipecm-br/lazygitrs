@@ -67,7 +67,7 @@ pub struct DiffModeState {
 
     // Combobox editing state
     pub editing: Option<DiffModeSelector>,
-    pub textarea: Option<tui_textarea::TextArea<'static>>,
+    pub textarea: Option<ratatui_textarea::TextArea<'static>>,
     pub search_results: Vec<RefCandidate>,
     pub search_selected: usize,
     pub dropdown_scroll: usize,
@@ -92,7 +92,7 @@ pub struct DiffModeState {
     pub file_search_query: String,
     pub file_search_matches: Vec<usize>,
     pub file_search_match_idx: usize,
-    pub file_search_textarea: Option<tui_textarea::TextArea<'static>>,
+    pub file_search_textarea: Option<ratatui_textarea::TextArea<'static>>,
 }
 
 impl DiffModeState {

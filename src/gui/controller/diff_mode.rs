@@ -73,7 +73,7 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
         gui.diff_mode.file_search_query.clear();
         gui.diff_mode.file_search_matches.clear();
         gui.diff_mode.file_search_match_idx = 0;
-        let mut ta = tui_textarea::TextArea::default();
+        let mut ta = ratatui_textarea::TextArea::default();
         ta.set_cursor_line_style(ratatui::style::Style::default());
         gui.diff_mode.file_search_textarea = Some(ta);
         return Ok(());

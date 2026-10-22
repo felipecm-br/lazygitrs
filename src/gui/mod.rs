@@ -187,10 +187,10 @@ fn has_command_modifier(modifiers: KeyModifiers) -> bool {
 }
 
 pub(crate) fn textarea_input(
-    textarea: &mut tui_textarea::TextArea<'static>,
+    textarea: &mut ratatui_textarea::TextArea<'static>,
     key: KeyEvent,
 ) -> bool {
-    use tui_textarea::CursorMove;
+    use ratatui_textarea::CursorMove;
 
     let cmd = has_command_modifier(key.modifiers);
     let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -211,9 +211,9 @@ pub(crate) fn textarea_input(
         KeyCode::Right if alt => textarea.move_cursor(CursorMove::WordForward),
         // Option/Alt+Backspace: delete previous word
         KeyCode::Backspace if alt => {
-            let (row, col) = textarea.cursor();
+            let ratatui_textarea::DataCursor(row, col) = textarea.cursor();
             textarea.move_cursor(CursorMove::WordBack);
-            let (new_row, new_col) = textarea.cursor();
+            let ratatui_textarea::DataCursor(new_row, new_col) = textarea.cursor();
             if new_row == row {
                 for _ in new_col..col {
                     textarea.delete_next_char();
@@ -722,7 +722,7 @@ pub struct Gui {
     /// Temporarily holds a menu popup during action execution so async actions can restore it.
     pending_menu_popup: Option<PopupState>,
     /// Search bar textarea (1-line editor for search input).
-    search_textarea: Option<tui_textarea::TextArea<'static>>,
+    search_textarea: Option<ratatui_textarea::TextArea<'static>>,
     /// Last time a refresh occurred (for 10s background auto-refresh interval).
     last_refresh_at: Instant,
     /// Active branch filter for commits panel. When non-empty, only commits from these branches are shown.
@@ -4170,7 +4170,7 @@ impl Gui {
             self.search_query.clear();
             self.search_matches.clear();
             self.search_match_idx = 0;
-            let mut ta = tui_textarea::TextArea::default();
+            let mut ta = ratatui_textarea::TextArea::default();
             ta.set_cursor_line_style(ratatui::style::Style::default());
             self.search_textarea = Some(ta);
             return Ok(());
@@ -5626,7 +5626,7 @@ impl Gui {
                 //   - Enter while focused on Body (the natural keystroke for a multi-line field).
                 //   - Shift+Enter from Summary jumps focus to Body and inserts a newline.
                 //   - Ctrl+J (some terminals emit this for Shift+Enter) — without this branch it
-                //     would hit tui_textarea's default `delete_line_by_head` binding.
+                //     would hit ratatui_textarea's default `delete_line_by_head` binding.
                 else if (key.code == KeyCode::Enter
                     && (focus == popup::CommitInputFocus::Body
                         || key.modifiers.contains(KeyModifiers::SHIFT)))
@@ -5734,17 +5734,18 @@ impl Gui {
                     } = &mut self.popup
                     {
                         let history_len = self.commit_message_history.len();
-                        let load_msg = |summary_textarea: &mut tui_textarea::TextArea<'static>,
-                                        body_textarea: &mut tui_textarea::TextArea<'static>,
-                                        body_state: &mut popup::BodySoftWrap,
-                                        msg: &str| {
-                            let (summary, body) = split_commit_message(msg);
-                            popup::set_commit_summary_text(summary_textarea, &summary);
-                            *body_textarea = popup::make_commit_body_textarea();
-                            // Preserve history newlines; soft-wrap is display-only.
-                            body_state.set_text(popup::unwrap_commit_body(&body));
-                            body_state.render_into(body_textarea, wrap_width);
-                        };
+                        let load_msg =
+                            |summary_textarea: &mut ratatui_textarea::TextArea<'static>,
+                             body_textarea: &mut ratatui_textarea::TextArea<'static>,
+                             body_state: &mut popup::BodySoftWrap,
+                             msg: &str| {
+                                let (summary, body) = split_commit_message(msg);
+                                popup::set_commit_summary_text(summary_textarea, &summary);
+                                *body_textarea = popup::make_commit_body_textarea();
+                                // Preserve history newlines; soft-wrap is display-only.
+                                body_state.set_text(popup::unwrap_commit_body(&body));
+                                body_state.render_into(body_textarea, wrap_width);
+                            };
                         match key.code {
                             KeyCode::Up => {
                                 let new_idx = match self.commit_history_idx {
@@ -7843,7 +7844,7 @@ impl Gui {
                         } = &mut self.popup
                         {
                             body_textarea.scroll((rows, 0));
-                            let (row, col) = body_textarea.cursor();
+                            let ratatui_textarea::DataCursor(row, col) = body_textarea.cursor();
                             body_state.set_cursor_from_visual(row, col, wrap_width);
                         }
                         return;
@@ -9937,7 +9938,9 @@ impl Gui {
             ));
         }
 
-        prompt.push_str("Once addressed, run the relevant verification tests and summarize the changes made.");
+        prompt.push_str(
+            "Once addressed, run the relevant verification tests and summarize the changes made.",
+        );
 
         // Mark all as sent in lines_file
         for note in &mut lines_file.notes {
@@ -10907,7 +10910,7 @@ fn split_commit_message(msg: &str) -> (String, String) {
 /// at submit time to recover the original string. Used for single-line popup
 /// inputs (branch name, tag name, etc.) that need browser-textarea-style visual
 /// wrapping without polluting the value sent downstream.
-fn soft_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width: usize) {
+fn soft_wrap_textarea(textarea: &mut ratatui_textarea::TextArea<'static>, wrap_width: usize) {
     if wrap_width == 0 {
         return;
     }
@@ -10935,7 +10938,7 @@ fn soft_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width
     }
 
     // Track absolute char offset of cursor so we can restore it after rewrap.
-    let (cursor_row, cursor_col) = textarea.cursor();
+    let ratatui_textarea::DataCursor(cursor_row, cursor_col) = textarea.cursor();
     let mut cursor_abs = 0usize;
     for (i, line) in textarea.lines().iter().enumerate() {
         let line_chars = line.chars().count();
@@ -10964,17 +10967,17 @@ fn soft_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width
     textarea.select_all();
     textarea.cut();
     textarea.insert_str(&new_text);
-    textarea.move_cursor(tui_textarea::CursorMove::Top);
-    textarea.move_cursor(tui_textarea::CursorMove::Head);
+    textarea.move_cursor(ratatui_textarea::CursorMove::Top);
+    textarea.move_cursor(ratatui_textarea::CursorMove::Head);
     for _ in 0..new_row {
-        textarea.move_cursor(tui_textarea::CursorMove::Down);
+        textarea.move_cursor(ratatui_textarea::CursorMove::Down);
     }
     for _ in 0..new_col {
-        textarea.move_cursor(tui_textarea::CursorMove::Forward);
+        textarea.move_cursor(ratatui_textarea::CursorMove::Forward);
     }
 }
 
-fn auto_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width: usize) {
+fn auto_wrap_textarea(textarea: &mut ratatui_textarea::TextArea<'static>, wrap_width: usize) {
     if wrap_width == 0 {
         return;
     }
@@ -10985,7 +10988,7 @@ fn auto_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width
     }
 
     // Compute cursor's absolute char offset in the original text
-    let (cursor_row, cursor_col) = textarea.cursor();
+    let ratatui_textarea::DataCursor(cursor_row, cursor_col) = textarea.cursor();
     let original_lines: Vec<String> = textarea.lines().iter().map(|s| s.to_string()).collect();
 
     let mut cursor_abs = 0usize;
@@ -11041,13 +11044,13 @@ fn auto_wrap_textarea(textarea: &mut tui_textarea::TextArea<'static>, wrap_width
     textarea.cut();
     textarea.insert_str(&new_text);
 
-    textarea.move_cursor(tui_textarea::CursorMove::Top);
-    textarea.move_cursor(tui_textarea::CursorMove::Head);
+    textarea.move_cursor(ratatui_textarea::CursorMove::Top);
+    textarea.move_cursor(ratatui_textarea::CursorMove::Head);
     for _ in 0..new_row {
-        textarea.move_cursor(tui_textarea::CursorMove::Down);
+        textarea.move_cursor(ratatui_textarea::CursorMove::Down);
     }
     for _ in 0..new_col {
-        textarea.move_cursor(tui_textarea::CursorMove::Forward);
+        textarea.move_cursor(ratatui_textarea::CursorMove::Forward);
     }
 }
 
