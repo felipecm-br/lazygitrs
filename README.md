@@ -157,6 +157,11 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
       main: rounded
   ```
   Supported granular components: `notes`, `files`, `branches`, `commits`, `stash`, `status`, `main`, `commandLog`.
+- `gui.borderGradient` — paints the active border (and any popup drawn in the same color) with a multi-color gradient running from the top-left to the bottom-right corner, interpolated in OKLab. Use a preset (`aurora`, `nebula`, `rainbow`, `blackhole`, `warm`, `cool`, `lavender`, `monochrome`) or two or more hex stops. Empty (the default) keeps the solid theme color.
+  ```yaml
+  gui:
+    borderGradient: aurora            # or "#3ee8b5, #8f6cf5, #e46cc8"
+  ```
 - `~/.config/lazygitrs/themes/*.toml` — drop custom theme files here (or `~/.config/lazygit/themes/*.toml`). See [Themes](#themes).
 
 ### Clearing AI Sessions

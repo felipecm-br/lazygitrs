@@ -145,6 +145,11 @@ pub struct GuiConfig {
     pub nerd_fonts_version: String,
     #[serde(default)]
     pub border: BorderConfig,
+    /// Gradient for the active border: a preset (aurora, nebula, rainbow,
+    /// blackhole, warm, cool, lavender, monochrome) or two or more `#rrggbb`
+    /// stops. Empty (the default) keeps the solid active border color.
+    #[serde(rename = "borderGradient")]
+    pub border_gradient: String,
     #[serde(rename = "sideBySide", default = "default_side_by_side")]
     pub side_by_side: bool,
     #[serde(
@@ -202,6 +207,7 @@ impl Default for GuiConfig {
             show_bottom_line: true,
             nerd_fonts_version: "3".to_string(),
             border: BorderConfig::default(),
+            border_gradient: String::new(),
             side_by_side: true,
             file_header_separator_char: "─".to_string(),
             spinner: default_spinner(),

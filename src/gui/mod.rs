@@ -1,5 +1,6 @@
 pub mod context;
 pub mod controller;
+pub mod gradient;
 pub mod input;
 pub mod layout;
 pub mod modes;
@@ -1340,6 +1341,7 @@ impl Gui {
         input: &InputReader,
         keyboard_enhanced: &mut bool,
     ) -> Result<()> {
+        let border_gradient = gradient::parse_stops(&self.config.user_config.gui.border_gradient);
         loop {
             // Drain any model parts that have arrived from the background load.
             if let Some(rx) = &self.initial_load_rx {
@@ -1715,6 +1717,10 @@ impl Gui {
                             );
                         }
                     }
+                }
+
+                if let (Some(stops), Some(fg)) = (&border_gradient, theme.active_border.fg) {
+                    gradient::paint_matching(frame.buffer_mut(), fg, stops);
                 }
             })?;
 
