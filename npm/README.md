@@ -162,6 +162,7 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
   gui:
     borderGradient: aurora            # or "#3ee8b5, #8f6cf5, #e46cc8"
   ```
+  The `LAZYGITRS_BORDER_GRADIENT` environment variable overrides it (`off` disables), so a session-wide toggle can switch it without editing the config. It is read at startup.
 - `~/.config/lazygitrs/themes/*.toml` — drop custom theme files here (or `~/.config/lazygit/themes/*.toml`). See [Themes](#themes).
 
 ### Clearing AI Sessions

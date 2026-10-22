@@ -1341,7 +1341,12 @@ impl Gui {
         input: &InputReader,
         keyboard_enhanced: &mut bool,
     ) -> Result<()> {
-        let border_gradient = gradient::parse_stops(&self.config.user_config.gui.border_gradient);
+        // A session-wide toggle (e.g. exported by tmux) wins over the config;
+        // `LAZYGITRS_BORDER_GRADIENT=off` disables it.
+        let border_gradient = gradient::parse_stops(
+            &std::env::var("LAZYGITRS_BORDER_GRADIENT")
+                .unwrap_or_else(|_| self.config.user_config.gui.border_gradient.clone()),
+        );
         loop {
             // Drain any model parts that have arrived from the background load.
             if let Some(rx) = &self.initial_load_rx {
