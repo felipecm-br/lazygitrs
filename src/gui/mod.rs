@@ -20,8 +20,11 @@ use anyhow::{Context, Result};
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseEvent};
 use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::{Command, cursor, execute};
+use ratatui::Frame;
 use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
+use ratatui::backend::{CrosstermBackend, TestBackend};
+use ratatui::layout::Rect;
+use ratatui::widgets::{Block, BorderType};
 
 use crate::config::keybindings::matches_key;
 use crate::config::{AppConfig, AppState};
@@ -763,6 +766,9 @@ pub struct Gui {
     refresh_in_progress: bool,
     /// Frame counter for the loading spinner animation.
     spinner_frame: usize,
+    /// Draw a rounded frame around the whole app (`gui.outerFrame`, or a
+    /// gradient set through `LAZYGITRS_BORDER_GRADIENT`).
+    outer_frame: bool,
     /// Label shown on the head branch during a remote operation (e.g. "Pushing", "Pulling").
     remote_op_label: Option<String>,
     /// Timestamp when the last remote operation succeeded (for showing a temporary ✓).
@@ -1073,6 +1079,12 @@ impl Gui {
             context_mgr.set_selection_for(ContextId::Commits, 0);
         }
 
+        // Like waymaker's `WM_BORDER_GRADIENT`: a session-wide gradient also
+        // turns the frame on, so the app reads as a popup.
+        let outer_frame = config.user_config.gui.outer_frame
+            || std::env::var("LAZYGITRS_BORDER_GRADIENT")
+                .is_ok_and(|spec| gradient::parse_stops(&spec).is_some());
+
         Ok(Self {
             config: Arc::new(config),
             git,
@@ -1170,6 +1182,7 @@ impl Gui {
             commit_files_parent_context: None,
             all_branches_log: true,
             spinner_frame: 0,
+            outer_frame,
             remote_op_label: None,
             remote_op_success_at: None,
             pending_checkout_by_name: None,
@@ -1237,7 +1250,7 @@ impl Gui {
         // Sync layout dimensions with actual terminal size so mouse handling
         // uses the correct geometry from the very first frame.
         let size = terminal.size()?;
-        self.layout.update_size(size.width, size.height);
+        self.sync_layout_size(size.width, size.height);
 
         let mut keyboard_enhanced = keyboard_enhanced;
         let result = self.main_loop(&mut terminal, &input, &mut keyboard_enhanced);
@@ -1317,7 +1330,7 @@ impl Gui {
         // Force a full redraw next frame.
         terminal.clear()?;
         let size = terminal.size()?;
-        self.layout.update_size(size.width, size.height);
+        self.sync_layout_size(size.width, size.height);
 
         match status {
             Ok(st) if st.success() => Ok(()),
@@ -1335,6 +1348,237 @@ impl Gui {
         }
     }
 
+    fn render_ui(&mut self, frame: &mut Frame, theme: &crate::config::Theme) {
+        if self.rebase_mode.active {
+            presentation::rebase_mode::render(frame, &mut self.rebase_mode, theme);
+            // Render popup overlay on top of rebase mode
+            if self.popup != PopupState::None {
+                views::render_popup(
+                    frame,
+                    &self.popup,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    false,
+                    !self
+                        .config
+                        .user_config
+                        .git
+                        .commit
+                        .generate_command
+                        .trim()
+                        .is_empty(),
+                );
+            } else if self.ai_commit_generation_active() {
+                views::render_loading_overlay(
+                    frame,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    "AI Commit",
+                    "Generating commit message...",
+                    Some(("Esc esc", "cancel")),
+                );
+            } else if let Some(label) = self.remote_op_label.as_deref() {
+                views::render_loading_overlay(
+                    frame,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    label,
+                    "",
+                    None,
+                );
+            }
+        } else if self.diff_mode.active {
+            let diff_loading_show = self.diff_loading
+                && self
+                    .diff_loading_since
+                    .map(|t| t.elapsed() >= std::time::Duration::from_millis(50))
+                    .unwrap_or(false);
+            presentation::diff_mode::render(
+                frame,
+                &mut self.diff_mode,
+                &mut self.diff_view,
+                theme,
+                self.diff_loading,
+                diff_loading_show,
+                self.spinner_frame,
+            );
+            // Render popup overlay on top of diff mode (for ? help, errors, etc.)
+            if self.popup != PopupState::None {
+                views::render_popup(
+                    frame,
+                    &self.popup,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    false,
+                    !self
+                        .config
+                        .user_config
+                        .git
+                        .commit
+                        .generate_command
+                        .trim()
+                        .is_empty(),
+                );
+            } else if self.ai_commit_generation_active() {
+                views::render_loading_overlay(
+                    frame,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    "AI Commit",
+                    "Generating commit message...",
+                    Some(("Esc esc", "cancel")),
+                );
+            } else if let Some(label) = self.remote_op_label.as_deref() {
+                views::render_loading_overlay(
+                    frame,
+                    frame.area(),
+                    self.spinner_frame,
+                    theme,
+                    label,
+                    "",
+                    None,
+                );
+            }
+        } else {
+            let model = self.model.lock().unwrap();
+            let search_state = if self.search_active || !self.search_query.is_empty() {
+                Some((
+                    self.search_query.as_str(),
+                    self.search_matches.len(),
+                    self.search_match_idx,
+                ))
+            } else {
+                None
+            };
+            let cmd_log = self.command_log.lock().unwrap();
+            let mut active_commit_filters: Vec<String> = self
+                .commit_branch_filter
+                .iter()
+                .map(|branch| format!("branch: {branch}"))
+                .collect();
+            if let Some(path) = self.commit_path_filter.as_deref() {
+                active_commit_filters.push(format!("path: {path}"));
+            }
+            if !self.commit_author_filter.is_empty() {
+                active_commit_filters
+                    .push(format!("author: {}", self.commit_author_filter.join(", ")));
+            }
+            views::render(
+                frame,
+                &model,
+                &mut self.context_mgr,
+                &self.layout,
+                &self.popup,
+                &self.config,
+                theme,
+                &mut self.diff_view,
+                &mut self.commit_list_cache,
+                self.screen_mode,
+                self.show_file_tree,
+                &self.file_tree_nodes,
+                &self.collapsed_dirs,
+                self.diff_focused,
+                search_state,
+                self.search_textarea.as_ref(),
+                &cmd_log,
+                self.show_command_log,
+                &active_commit_filters,
+                self.show_commit_file_tree,
+                &self.commit_file_tree_nodes,
+                &self.commit_files_collapsed_dirs,
+                &self.commit_files_hash,
+                &self.commit_files_message,
+                &self.branch_commits_name,
+                &self.remote_branches_name,
+                self.sub_commits_parent_context,
+                self.spinner_frame,
+                self.remote_op_label.as_deref(),
+                self.remote_op_success_at
+                    .map(|t| t.elapsed() < std::time::Duration::from_secs(5))
+                    .unwrap_or(false),
+                &self.cherry_pick_clipboard,
+                self.range_select_anchor,
+                self.diff_loading,
+                // Only show "Loading diff..." text after a short delay to avoid jitter on fast loads
+                self.diff_loading
+                    && self
+                        .diff_loading_since
+                        .map(|t| t.elapsed() >= std::time::Duration::from_millis(50))
+                        .unwrap_or(false),
+                &self.commit_stats_cache,
+                &self.commit_messages_cache,
+                &mut self.commit_details_scroll,
+                &mut self.commit_details_scroll_hash,
+                self.show_commit_details,
+                false,
+                !self
+                    .config
+                    .user_config
+                    .git
+                    .commit
+                    .generate_command
+                    .trim()
+                    .is_empty(),
+                self.grab_column_hovered,
+                self.all_branches_log,
+            );
+            if self.popup == PopupState::None {
+                if self.ai_commit_generation_active() {
+                    views::render_loading_overlay(
+                        frame,
+                        frame.area(),
+                        self.spinner_frame,
+                        theme,
+                        "AI Commit",
+                        "Generating commit message...",
+                        Some(("Esc esc", "cancel")),
+                    );
+                } else if let Some(label) = self.remote_op_label.as_deref() {
+                    views::render_loading_overlay(
+                        frame,
+                        frame.area(),
+                        self.spinner_frame,
+                        theme,
+                        label,
+                        "",
+                        None,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Whether the outer frame is drawn at this terminal size. Too small a
+    /// terminal skips it rather than leave the app no room.
+    fn outer_frame_active(&self, width: u16, height: u16) -> bool {
+        self.outer_frame && width > 2 && height > 2
+    }
+
+    /// Track the terminal size, minus the outer frame when it is drawn, so
+    /// layout and mouse hit-testing work in the app's own coordinates.
+    fn sync_layout_size(&mut self, width: u16, height: u16) {
+        if self.outer_frame_active(width, height) {
+            self.layout.update_size(width - 2, height - 2);
+        } else {
+            self.layout.update_size(width, height);
+        }
+    }
+
+    /// Move a mouse event into the app's coordinates when the outer frame is
+    /// drawn; events on the frame itself land on the nearest inner cell.
+    fn mouse_in_frame(&self, mut mouse: MouseEvent) -> MouseEvent {
+        if self.outer_frame_active(self.layout.width + 2, self.layout.height + 2) {
+            mouse.column = mouse.column.saturating_sub(1).min(self.layout.width - 1);
+            mouse.row = mouse.row.saturating_sub(1).min(self.layout.height - 1);
+        }
+        mouse
+    }
+
     fn main_loop(
         &mut self,
         terminal: &mut Term,
@@ -1347,6 +1591,15 @@ impl Gui {
             &std::env::var("LAZYGITRS_BORDER_GRADIENT")
                 .unwrap_or_else(|_| self.config.user_config.gui.border_gradient.clone()),
         );
+        // `Some(title)` when the app is drawn inside a frame; the off-screen
+        // terminal holds the app rendered at the frame's inner size.
+        let outer_frame = self
+            .outer_frame
+            .then(|| std::env::var("LAZYGITRS_BORDER_TITLE").ok());
+        let mut offscreen = match self.outer_frame {
+            true => Some(Terminal::new(TestBackend::new(1, 1))?),
+            false => None,
+        };
         loop {
             // Drain any model parts that have arrived from the background load.
             if let Some(rx) = &self.initial_load_rx {
@@ -1521,207 +1774,40 @@ impl Gui {
             // Render
             let theme = self.active_theme();
             terminal.draw(|frame| {
-                if self.rebase_mode.active {
-                    presentation::rebase_mode::render(frame, &mut self.rebase_mode, &theme);
-                    // Render popup overlay on top of rebase mode
-                    if self.popup != PopupState::None {
-                        views::render_popup(
-                            frame,
-                            &self.popup,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            false,
-                            !self
-                                .config
-                                .user_config
-                                .git
-                                .commit
-                                .generate_command
-                                .trim()
-                                .is_empty(),
-                        );
-                    } else if self.ai_commit_generation_active() {
-                        views::render_loading_overlay(
-                            frame,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            "AI Commit",
-                            "Generating commit message...",
-                            Some(("Esc esc", "cancel")),
-                        );
-                    } else if let Some(label) = self.remote_op_label.as_deref() {
-                        views::render_loading_overlay(
-                            frame,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            label,
-                            "",
-                            None,
-                        );
-                    }
-                } else if self.diff_mode.active {
-                    let diff_loading_show = self.diff_loading
-                        && self
-                            .diff_loading_since
-                            .map(|t| t.elapsed() >= std::time::Duration::from_millis(50))
-                            .unwrap_or(false);
-                    presentation::diff_mode::render(
-                        frame,
-                        &mut self.diff_mode,
-                        &mut self.diff_view,
-                        &theme,
-                        self.diff_loading,
-                        diff_loading_show,
-                        self.spinner_frame,
-                    );
-                    // Render popup overlay on top of diff mode (for ? help, errors, etc.)
-                    if self.popup != PopupState::None {
-                        views::render_popup(
-                            frame,
-                            &self.popup,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            false,
-                            !self
-                                .config
-                                .user_config
-                                .git
-                                .commit
-                                .generate_command
-                                .trim()
-                                .is_empty(),
-                        );
-                    } else if self.ai_commit_generation_active() {
-                        views::render_loading_overlay(
-                            frame,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            "AI Commit",
-                            "Generating commit message...",
-                            Some(("Esc esc", "cancel")),
-                        );
-                    } else if let Some(label) = self.remote_op_label.as_deref() {
-                        views::render_loading_overlay(
-                            frame,
-                            frame.area(),
-                            self.spinner_frame,
-                            &theme,
-                            label,
-                            "",
-                            None,
-                        );
-                    }
-                } else {
-                    let model = self.model.lock().unwrap();
-                    let search_state = if self.search_active || !self.search_query.is_empty() {
-                        Some((
-                            self.search_query.as_str(),
-                            self.search_matches.len(),
-                            self.search_match_idx,
-                        ))
-                    } else {
-                        None
-                    };
-                    let cmd_log = self.command_log.lock().unwrap();
-                    let mut active_commit_filters: Vec<String> = self
-                        .commit_branch_filter
-                        .iter()
-                        .map(|branch| format!("branch: {branch}"))
-                        .collect();
-                    if let Some(path) = self.commit_path_filter.as_deref() {
-                        active_commit_filters.push(format!("path: {path}"));
-                    }
-                    if !self.commit_author_filter.is_empty() {
-                        active_commit_filters
-                            .push(format!("author: {}", self.commit_author_filter.join(", ")));
-                    }
-                    views::render(
-                        frame,
-                        &model,
-                        &mut self.context_mgr,
-                        &self.layout,
-                        &self.popup,
-                        &self.config,
-                        &theme,
-                        &mut self.diff_view,
-                        &mut self.commit_list_cache,
-                        self.screen_mode,
-                        self.show_file_tree,
-                        &self.file_tree_nodes,
-                        &self.collapsed_dirs,
-                        self.diff_focused,
-                        search_state,
-                        self.search_textarea.as_ref(),
-                        &cmd_log,
-                        self.show_command_log,
-                        &active_commit_filters,
-                        self.show_commit_file_tree,
-                        &self.commit_file_tree_nodes,
-                        &self.commit_files_collapsed_dirs,
-                        &self.commit_files_hash,
-                        &self.commit_files_message,
-                        &self.branch_commits_name,
-                        &self.remote_branches_name,
-                        self.sub_commits_parent_context,
-                        self.spinner_frame,
-                        self.remote_op_label.as_deref(),
-                        self.remote_op_success_at
-                            .map(|t| t.elapsed() < std::time::Duration::from_secs(5))
-                            .unwrap_or(false),
-                        &self.cherry_pick_clipboard,
-                        self.range_select_anchor,
-                        self.diff_loading,
-                        // Only show "Loading diff..." text after a short delay to avoid jitter on fast loads
-                        self.diff_loading
-                            && self
-                                .diff_loading_since
-                                .map(|t| t.elapsed() >= std::time::Duration::from_millis(50))
-                                .unwrap_or(false),
-                        &self.commit_stats_cache,
-                        &self.commit_messages_cache,
-                        &mut self.commit_details_scroll,
-                        &mut self.commit_details_scroll_hash,
-                        self.show_commit_details,
-                        false,
-                        !self
-                            .config
-                            .user_config
-                            .git
-                            .commit
-                            .generate_command
-                            .trim()
-                            .is_empty(),
-                        self.grab_column_hovered,
-                        self.all_branches_log,
-                    );
-                    if self.popup == PopupState::None {
-                        if self.ai_commit_generation_active() {
-                            views::render_loading_overlay(
-                                frame,
-                                frame.area(),
-                                self.spinner_frame,
-                                &theme,
-                                "AI Commit",
-                                "Generating commit message...",
-                                Some(("Esc esc", "cancel")),
-                            );
-                        } else if let Some(label) = self.remote_op_label.as_deref() {
-                            views::render_loading_overlay(
-                                frame,
-                                frame.area(),
-                                self.spinner_frame,
-                                &theme,
-                                label,
-                                "",
-                                None,
-                            );
+                let area = frame.area();
+                let framed = outer_frame
+                    .as_ref()
+                    .zip(offscreen.as_mut())
+                    .filter(|_| self.outer_frame_active(area.width, area.height));
+                if let Some((title, offscreen)) = framed {
+                    // Draw the app one cell in from every edge: render it
+                    // off-screen at the inner size, then copy it into place.
+                    let inner = Rect::new(area.x + 1, area.y + 1, area.width - 2, area.height - 2);
+                    offscreen.backend_mut().resize(inner.width, inner.height);
+                    let Ok(done) = offscreen.draw(|f| self.render_ui(f, &theme));
+                    let buf = frame.buffer_mut();
+                    for y in 0..inner.height {
+                        for x in 0..inner.width {
+                            buf[(inner.x + x, inner.y + y)] = done.buffer[(x, y)].clone();
                         }
                     }
+                    let backend = offscreen.backend();
+                    if backend.cursor_visible() {
+                        let pos = backend.cursor_position();
+                        frame.set_cursor_position((inner.x + pos.x, inner.y + pos.y));
+                    }
+                    let mut block = Block::bordered()
+                        .border_type(BorderType::Rounded)
+                        .border_style(theme.inactive_border);
+                    if let Some(title) = title {
+                        block = block.title(format!(" {title} "));
+                    }
+                    frame.render_widget(block, area);
+                    if let Some(stops) = &border_gradient {
+                        gradient::paint_frame(frame.buffer_mut(), area, stops);
+                    }
+                } else {
+                    self.render_ui(frame, &theme);
                 }
 
                 if let (Some(stops), Some(fg)) = (&border_gradient, theme.active_border.fg) {
@@ -1797,7 +1883,7 @@ impl Gui {
                         self.show_error("Command failed", err);
                     }
                 }
-                Event::Mouse(mouse) => self.handle_mouse(mouse),
+                Event::Mouse(mouse) => self.handle_mouse(self.mouse_in_frame(mouse)),
                 Event::Resize(w, h) => self.handle_resize(w, h),
                 Event::FocusGained if self.config.user_config.git.auto_refresh => {
                     self.needs_refresh = true;
@@ -1929,7 +2015,8 @@ impl Gui {
     }
 
     fn handle_resize(&mut self, w: u16, h: u16) {
-        self.layout.update_size(w, h);
+        self.sync_layout_size(w, h);
+        let w = self.layout.width;
         // Re-flow any active commit-message textarea to the new width so
         // wrapping stays consistent with what the user sees.
         let popup_width = (w * 60 / 100).min(60).max(30).min(w);

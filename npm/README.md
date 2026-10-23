@@ -163,6 +163,12 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
     borderGradient: aurora            # or "#3ee8b5, #8f6cf5, #e46cc8"
   ```
   The `LAZYGITRS_BORDER_GRADIENT` environment variable overrides it (`off` disables), so a session-wide toggle can switch it without editing the config. It is read at startup.
+- `gui.outerFrame` — draws a rounded frame around the whole app so it reads as a popup (e.g. inside a borderless tmux popup). The frame is painted with the border gradient when one is set. Default `false`.
+  ```yaml
+  gui:
+    outerFrame: true
+  ```
+  Setting `LAZYGITRS_BORDER_GRADIENT` to a gradient also turns the frame on, and `LAZYGITRS_BORDER_TITLE` labels it.
 - `~/.config/lazygitrs/themes/*.toml` — drop custom theme files here (or `~/.config/lazygit/themes/*.toml`). See [Themes](#themes).
 
 ### Clearing AI Sessions

@@ -150,6 +150,11 @@ pub struct GuiConfig {
     /// stops. Empty (the default) keeps the solid active border color.
     #[serde(rename = "borderGradient")]
     pub border_gradient: String,
+    /// Draws a rounded frame around the whole app, so it looks like a popup
+    /// (e.g. inside a borderless tmux popup). Painted with `borderGradient`
+    /// when one is set.
+    #[serde(rename = "outerFrame")]
+    pub outer_frame: bool,
     #[serde(rename = "sideBySide", default = "default_side_by_side")]
     pub side_by_side: bool,
     #[serde(
@@ -208,6 +213,7 @@ impl Default for GuiConfig {
             nerd_fonts_version: "3".to_string(),
             border: BorderConfig::default(),
             border_gradient: String::new(),
+            outer_frame: false,
             side_by_side: true,
             file_header_separator_char: "─".to_string(),
             spinner: default_spinner(),

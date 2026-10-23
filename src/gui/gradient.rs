@@ -167,6 +167,31 @@ pub fn paint_matching(buf: &mut Buffer, target: Color, stops: &[Rgb]) {
     }
 }
 
+/// Recolors the box-drawing cells on the perimeter of `area` along its own
+/// diagonal. Titles drawn on the frame keep their colors.
+pub fn paint_frame(buf: &mut Buffer, area: Rect, stops: &[Rgb]) {
+    let area = area.intersection(buf.area);
+    if area.is_empty() || stops.is_empty() {
+        return;
+    }
+    let (right, bottom) = (area.right() - 1, area.bottom() - 1);
+    let mut paint = |x: u16, y: u16| {
+        let cell = &mut buf[(x, y)];
+        if is_box_drawing(cell.symbol()) {
+            let (r, g, b) = sample(stops, diagonal(area, x, y));
+            cell.set_fg(Color::Rgb(r, g, b));
+        }
+    };
+    for x in area.left()..area.right() {
+        paint(x, area.top());
+        paint(x, bottom);
+    }
+    for y in area.top() + 1..bottom {
+        paint(area.left(), y);
+        paint(right, y);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -227,5 +252,24 @@ mod tests {
             "title text keeps the border color it inherited"
         );
         assert_eq!(buf[(5, 2)].fg, Color::Blue, "other colors are left alone");
+    }
+
+    #[test]
+    fn paints_the_frame_but_not_its_title_or_inside() {
+        let area = Rect::new(0, 0, 12, 5);
+        let mut buf = Buffer::empty(area);
+        Block::bordered()
+            .border_type(BorderType::Rounded)
+            .border_style(Color::DarkGray)
+            .title("lg")
+            .render(area, &mut buf);
+        buf[(5, 2)].set_symbol("─").set_fg(Color::Blue);
+
+        paint_frame(&mut buf, area, &[(255, 0, 0), (0, 0, 255)]);
+
+        assert_eq!(buf[(0, 0)].fg, Color::Rgb(255, 0, 0));
+        assert_eq!(buf[(11, 4)].fg, Color::Rgb(0, 0, 255));
+        assert_eq!(buf[(1, 0)].fg, Color::DarkGray, "the title keeps its color");
+        assert_eq!(buf[(5, 2)].fg, Color::Blue, "the inside is untouched");
     }
 }
