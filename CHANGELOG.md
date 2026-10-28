@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+## [0.1.4-cockpit] - 2026-10-28
+
+### Features & Refactoring
+
+- Add inline image diff previews and sticky file headers in the pager
+- Add `gui.borderGradient` (overridable by `LAZYGITRS_BORDER_GRADIENT`) and an outer frame around the whole app
+- Compare mode: commit history panel and polished layout and navigation
+- Add `Esc` filter reset, `Ctrl+L` shortcut and branch checklist clear
+- Align worktree names and branches in the list
+- Keep failed checkouts accurate and speed up branch switches
+- Fix ANSI styling leaking from commit text
+- Upgrade ratatui to 0.30 and crossterm to 0.29
+
 ## [0.1.3-cockpit] - 2026-10-18
 
 ### Documentation & Governance
