@@ -26,18 +26,6 @@ jobs:
           # 🐧 Linux x86_64 (musl - fully static standalone binary)
           - target: x86_64-unknown-linux-musl
             os: ubuntu-latest
-          # 🐧 Linux ARM64 (musl - fully static standalone binary)
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-          # 🍎 macOS Apple Silicon (M1/M2/M3/M4)
-          - target: aarch64-apple-darwin
-            os: macos-latest
-          # 🍎 macOS Intel (x86_64)
-          - target: x86_64-apple-darwin
-            os: macos-13
-          # 🪟 Windows 64-bit
-          - target: x86_64-pc-windows-msvc
-            os: windows-latest
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
