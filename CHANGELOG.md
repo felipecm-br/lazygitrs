@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5-cockpit] - 2026-10-30
+
+### Bug Fixes
+
+- Diff view: `Space` on a staged hunk now unstages it and keeps the cursor on that hunk instead of jumping to the next one
+- Diff view: staging the last hunk with `Space` no longer wraps the cursor (and viewport) back to the first hunk
+
 ## [0.1.4-cockpit] - 2026-10-28
 
 ### Features & Refactoring
