@@ -2313,7 +2313,12 @@ mod tests {
                 assert!(
                     text.contains("last.txt"),
                     "tail header visible, layout {layout:?} wrap {wrap}: {:#?}",
-                    (0..buf.area.height).map(|y| test_row_string(&buf, y).chars().take(70).collect::<String>()).collect::<Vec<_>>()
+                    (0..buf.area.height)
+                        .map(|y| test_row_string(&buf, y)
+                            .chars()
+                            .take(70)
+                            .collect::<String>())
+                        .collect::<Vec<_>>()
                 );
                 assert!(text.contains("tail"), "tail content visible");
                 let mut before_y = None;
