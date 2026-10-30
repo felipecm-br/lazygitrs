@@ -5085,11 +5085,18 @@ impl Gui {
                         if hunk_idx < self.diff_view.hunk_starts.len() {
                             let is_staged = self.diff_view.is_staged_hunk(hunk_idx);
                             if !is_staged {
-                                let _ = self.stage_selected_file_hunk(hunk_idx);
+                                // Staging moves the triage forward: advance
+                                // to the next hunk (no wrap on the last one).
+                                self.diff_view.selected_revert_hunk = Some(hunk_idx);
+                                if self.stage_selected_file_hunk(hunk_idx).is_ok() {
+                                    self.diff_view.advance_revert_hunk();
+                                }
                             } else {
+                                // Unstaging is a correction: keep the cursor
+                                // on the hunk so the marker flip is visible.
                                 let _ = self.unstage_selected_file_hunk(hunk_idx);
+                                self.diff_view.selected_revert_hunk = Some(hunk_idx);
                             }
-                            self.diff_view.cycle_next_revert_hunk();
                         } else if self.diff_view.hunk_starts.is_empty() {
                             let _ = self.stage_selected_file_hunk(0);
                         }
@@ -8667,7 +8674,8 @@ impl Gui {
                                     );
                                 }
                             }
-                            let note_start_y = pl.inner_y + self.diff_view.sticky_row_height(&pl) + acc as u16;
+                            let note_start_y =
+                                pl.inner_y + self.diff_view.sticky_row_height(&pl) + acc as u16;
                             let click_off = mouse.row.saturating_sub(note_start_y);
                             let block_row = click_off % 5;
 
@@ -12386,7 +12394,7 @@ mod terminal_mouse_tests {
     }
 
     #[test]
-    fn space_key_in_diff_focused_cycles_to_next_hunk() {
+    fn space_key_in_diff_focused_advances_to_next_hunk() {
         let repo = TempRepo::new("space-diff-cycle");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
@@ -12405,8 +12413,27 @@ mod terminal_mouse_tests {
         assert_eq!(gui.diff_view.selected_revert_hunk, Some(2));
 
         gui.handle_key(space_key).unwrap();
-        // After last hunk, cycles back to 0
-        assert_eq!(gui.diff_view.selected_revert_hunk, Some(0));
+        // Last hunk: stays put instead of wrapping back to the top.
+        assert_eq!(gui.diff_view.selected_revert_hunk, Some(2));
+    }
+
+    #[test]
+    fn space_key_on_staged_hunk_keeps_selection() {
+        let repo = TempRepo::new("space-diff-unstage");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+
+        gui.diff_focused = true;
+        gui.diff_view.hunk_starts = vec![5, 15, 25];
+        gui.diff_view.hunk_staged = vec![false, true, false];
+        gui.diff_view.selected_revert_hunk = Some(1);
+
+        let space_key = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
+        gui.handle_key(space_key).unwrap();
+
+        // Unstaging is a correction: the cursor stays on the same hunk.
+        assert_eq!(gui.diff_view.selected_revert_hunk, Some(1));
     }
 
     #[test]

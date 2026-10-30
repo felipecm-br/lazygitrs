@@ -1779,6 +1779,28 @@ impl DiffViewState {
         self.scroll_offset = self.scroll_target_for_line(self.hunk_starts[next]);
     }
 
+    /// Advance to the next hunk and select it as the revert target, like
+    /// `cycle_next_revert_hunk` but without wrapping: on the last hunk the
+    /// selection stays put. Used after staging a hunk with Space so that
+    /// finishing the file doesn't yank the viewport back to the top.
+    pub fn advance_revert_hunk(&mut self) {
+        if self.hunk_starts.is_empty() {
+            self.selected_revert_hunk = None;
+            return;
+        }
+        let last = self.hunk_starts.len() - 1;
+        let next = match self.selected_revert_hunk {
+            Some(i) => (i + 1).min(last),
+            None => self
+                .hunk_starts
+                .iter()
+                .position(|&h| h > self.current_scroll_line())
+                .unwrap_or(last),
+        };
+        self.selected_revert_hunk = Some(next);
+        self.scroll_offset = self.scroll_target_for_line(self.hunk_starts[next]);
+    }
+
     /// Jump to the previous hunk and select it as the revert target.
     /// Wraps to the last hunk before the first.
     pub fn cycle_prev_revert_hunk(&mut self) {
