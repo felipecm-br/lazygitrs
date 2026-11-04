@@ -360,12 +360,15 @@ pub(super) fn render_status_bar(
     ]);
 
     if hints.len() > MAX_STATUS_BAR_HINTS {
+        // Keep the anchor exactly once, as the last pair: drop it from the
+        // global tail first, or it can survive truncation and repeat.
+        let anchor = match return_to_cockpit_key {
+            Some(ref k) => (k.as_str(), "cockpit"),
+            None => ("?", "help"),
+        };
+        hints.retain(|&(_, desc)| desc != anchor.1);
         hints.truncate(MAX_STATUS_BAR_HINTS - 1);
-        if let Some(ref k) = return_to_cockpit_key {
-            hints.push((k.as_str(), "cockpit"));
-        } else {
-            hints.push(("?", "help"));
-        }
+        hints.push(anchor);
     }
 
     let key_style = Style::default()

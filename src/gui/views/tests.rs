@@ -946,3 +946,116 @@ fn cockpit_theme_paints_cyan_selection_gutter_at_x_equals_1() {
     assert_eq!(buf[(1, 2)].fg, theme.selection_gutter.unwrap());
     assert_eq!(buf[(2, 2)].symbol(), "s");
 }
+
+/// Golden snapshot of the status bar for every context, default keybindings,
+/// in both list focus and diff focus. Any wording, order, separator or key
+/// label change shows up as a diff here. Regenerate deliberately with
+/// `UPDATE_SNAPSHOTS=1 cargo test status_bar_golden_snapshot`.
+#[test]
+fn status_bar_golden_snapshot() {
+    use super::{DiffViewState, render_status_bar};
+    use crate::config::KeybindingConfig;
+    use crate::gui::context::{ContextId, ContextManager};
+    use crate::model::Model;
+
+    const WIDTH: u16 = 200;
+    let backend = TestBackend::new(WIDTH, 1);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    let theme = crate::config::Theme::default();
+    let model = Model::default();
+    let keybindings = KeybindingConfig::default();
+    let mut diff_view = DiffViewState::new();
+    diff_view.load_from_diff_output("src/main.rs", "@@ -1,1 +1,1 @@\n-old\n+new\n");
+
+    let contexts = [
+        ContextId::Status,
+        ContextId::Files,
+        ContextId::Worktrees,
+        ContextId::Submodules,
+        ContextId::Branches,
+        ContextId::Remotes,
+        ContextId::Tags,
+        ContextId::Commits,
+        ContextId::Reflog,
+        ContextId::Stash,
+        ContextId::CommitFiles,
+        ContextId::StashFiles,
+        ContextId::BranchCommits,
+        ContextId::BranchCommitFiles,
+        ContextId::RemoteBranches,
+    ];
+
+    let mut snapshot = String::new();
+    for diff_focused in [false, true] {
+        for ctx in contexts {
+            let mut ctx_mgr = ContextManager::new();
+            ctx_mgr.set_active(ctx);
+            terminal
+                .draw(|frame| {
+                    render_status_bar(
+                        frame,
+                        Rect::new(0, 0, WIDTH, 1),
+                        &ctx_mgr,
+                        &diff_view,
+                        &theme,
+                        &model,
+                        diff_focused,
+                        false,
+                        &keybindings,
+                        false,
+                    );
+                })
+                .expect("render status bar");
+            let line: String = terminal
+                .backend()
+                .buffer()
+                .content()
+                .iter()
+                .map(|c| c.symbol())
+                .collect();
+            let focus = if diff_focused { "diff" } else { "list" };
+            snapshot.push_str(&format!("{ctx:?}/{focus}: {}\n", line.trim_end()));
+        }
+    }
+
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/gui/views/snapshots/status_bar.txt"
+    );
+    if std::env::var_os("UPDATE_SNAPSHOTS").is_some() {
+        std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
+        std::fs::write(path, &snapshot).unwrap();
+        return;
+    }
+    let expected = std::fs::read_to_string(path)
+        .expect("missing snapshot: run `UPDATE_SNAPSHOTS=1 cargo test status_bar_golden_snapshot`");
+    if expected != snapshot {
+        let diff: Vec<String> = expected
+            .lines()
+            .zip(snapshot.lines())
+            .filter(|(e, a)| e != a)
+            .map(|(e, a)| format!("- {e}\n+ {a}"))
+            .collect();
+        panic!(
+            "status bar snapshot changed (UPDATE_SNAPSHOTS=1 to accept):\n{}",
+            diff.join("\n")
+        );
+    }
+}
+
+#[test]
+fn status_bar_snapshot_never_repeats_a_hint() {
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/src/gui/views/snapshots/status_bar.txt"
+    );
+    let snapshot = std::fs::read_to_string(path).expect("snapshot");
+    for line in snapshot.lines() {
+        let (_, bar) = line.split_once(": ").unwrap();
+        let pairs: Vec<&str> = bar.trim().split(" │ ").collect();
+        let mut seen = std::collections::HashSet::new();
+        for p in &pairs {
+            assert!(seen.insert(*p), "repeated hint {p:?} in: {line}");
+        }
+    }
+}

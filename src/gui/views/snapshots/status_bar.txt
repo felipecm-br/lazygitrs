@@ -1,0 +1,30 @@
+Status/list:  J K scroll diff │ { } hunks │ ctrl+w resize │ q quit │ : shell │ tab 1-5 panels │ ? help
+Files/list:  ctrl+g head │ c commit │ ctrl+a ai commit │ a stage all │ ctrl+n agent note │ space toggle │ ? help
+Worktrees/list:  space switch │ t tmux │ n new │ d remove │ J K scroll diff │ { } hunks │ ? help
+Submodules/list:  space update │ a add │ d remove │ e enter │ J K scroll diff │ { } hunks │ ? help
+Branches/list:  space checkout │ n new │ w worktree │ d delete │ M merge │ r rebase │ ? help
+Remotes/list:  enter branches │ f fetch │ e edit │ P push │ p pull │ J K scroll diff │ ? help
+Tags/list:  n new │ d delete │ P push │ J K scroll diff │ { } hunks │ ctrl+w resize │ ? help
+Commits/list:  ctrl+g files │ ctrl+s filter branch │ r reword │ g reset │ C copy (cherry-pick) │ t revert │ ? help
+Reflog/list:  enter commit files │ \ unified view │ . details │ J K scroll diff │ { } hunks │ ctrl+w resize │ ? help
+Stash/list:  g pop │ space apply │ d drop │ \ unified view │ J K scroll diff │ { } hunks │ ? help
+CommitFiles/list:  ctrl+g files │ enter focus diff │ ` tree │ \ unified view │ y copy │ J K scroll diff │ ? help
+StashFiles/list:  enter focus diff │ ` tree │ \ unified view │ y copy │ J K scroll diff │ { } hunks │ ? help
+BranchCommits/list:  enter commit files │ \ unified view │ . details │ J K scroll diff │ { } hunks │ ctrl+w resize │ ? help
+BranchCommitFiles/list:  enter focus diff │ ` tree │ \ unified view │ y copy │ J K scroll diff │ { } hunks │ ? help
+RemoteBranches/list:  enter commits │ space checkout │ M merge │ r rebase │ d delete │ J K scroll diff │ ? help
+Status/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Files/diff:  ctrl+g head │ space stage hunk │ { } cycle hunks │ [ ] side view │ ctrl+n agent note │ \ unified view │ ? help
+Worktrees/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Submodules/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Branches/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Remotes/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Tags/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Commits/diff:  ctrl+g files │ { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ ? help
+Reflog/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+Stash/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+CommitFiles/diff:  ctrl+g files │ { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ ? help
+StashFiles/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+BranchCommits/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+BranchCommitFiles/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
+RemoteBranches/diff:  { } prev/next hunk │ [ ] side view │ ctrl+n agent note │ \ unified view │ ctrl+w resize │ q quit │ ? help
