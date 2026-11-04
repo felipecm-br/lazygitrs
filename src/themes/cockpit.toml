@@ -1,0 +1,56 @@
+id = "cockpit"
+name = "Cockpit"
+appearance = "dark"
+
+# Triadic Cold-Color Architecture:
+# Blue = Passive Architecture (frames, remote branches)
+# Cyan = Action Affordance & Control Trigger (focus, active gutter, shortcuts)
+# Darkgray = Zero-Noise Metadata (inactive borders, commit hashes, descriptions)
+primary = "#89b4fa"
+secondary = "#cba6f7"
+accent = "#94e2d5"
+accent_secondary = "#f9e2af"
+success = "#a6e3a1"
+error = "#f38ba8"
+warning = "#fab387"
+info = "#94e2d5"
+
+text = "#a6adc8"
+text_strong = "#cdd6f4"
+text_dimmed = "#585b70"
+
+background = "#1e1e2e"
+background_panel = "#181825"
+selected_bg = "reset"
+selection_gutter = "#94e2d5"
+separator = "#585b70"
+popup_border = "#89b4fa"
+
+border = "#585b70"
+border_active = "#89b4fa"
+
+branch_remote = "#89b4fa"
+file_unstaged = "#fab387"
+commit_hash = "#585b70"
+commit_hash_unpushed = "#fab387"
+
+diff_add = "#a6e3a1"
+diff_remove = "#f38ba8"
+diff_context = "#6c7086"
+diff_add_bg = "#1e3a2f"
+diff_remove_bg = "#3d1f28"
+diff_add_word = "#2d5a45"
+diff_remove_word = "#5e2b3b"
+diff_line_number = "#45475a"
+
+syntax_comment = "#585b70"
+syntax_keyword = "#cba6f7"
+syntax_string = "#a6e3a1"
+syntax_number = "#fab387"
+syntax_function = "#89b4fa"
+syntax_type = "#f9e2af"
+syntax_operator = "#94e2d5"
+syntax_punctuation = "#9399b2"
+syntax_variable = "#cdd6f4"
+
+graph_colors = ["#94e2d5", "#89b4fa", "#a6e3a1", "#f9e2af", "#cba6f7", "#fab387", "#74c7ec", "#b4befe"]

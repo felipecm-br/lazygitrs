@@ -76,6 +76,8 @@ pub struct Theme {
     pub spinner_chars: Vec<String>,
     /// Background for selected / highlighted items.
     pub selected_bg: Color,
+    /// Optional 1-cell `│` gutter color rendered at X=1 on the active selected row.
+    pub selection_gutter: Option<Color>,
     /// Background for popup overlays.
     pub popup_border: Color,
 
@@ -231,7 +233,23 @@ impl Theme {
     }
 
     pub fn from_config(config: &super::user_config::GuiConfig) -> Self {
-        let mut theme = Self::dark();
+        let mut theme = config
+            .theme
+            .preset
+            .as_deref()
+            .and_then(|id| {
+                if id.eq_ignore_ascii_case("omarchy") {
+                    Some(Self::omarchy())
+                } else if id.eq_ignore_ascii_case("cockpit") {
+                    Some(Self::cockpit())
+                } else {
+                    COLOR_THEMES
+                        .iter()
+                        .find(|ct| ct.id.eq_ignore_ascii_case(id))
+                        .map(|ct| ct.to_theme())
+                }
+            })
+            .unwrap_or_else(Self::dark);
 
         let global_border = match &config.border {
             crate::config::user_config::BorderConfig::Global(s) => s.clone(),
@@ -253,23 +271,268 @@ impl Theme {
             }
         }
 
-        if let Some(color) = parse_color_list(&config.theme.active_border_color) {
-            theme.active_border = Style::default().fg(color).add_modifier(Modifier::BOLD);
-        }
-        if let Some(color) = parse_color_list(&config.theme.inactive_border_color) {
-            theme.inactive_border = Style::default().fg(color);
-        }
-        if let Some(color) = parse_color_list(&config.theme.selected_line_bg_color) {
-            theme.selected_line = Style::default().bg(color);
-        }
-        if let Some(color) = parse_color_list(&config.theme.options_text_color) {
-            theme.options_text = Style::default().fg(color);
+        if config.theme.preset.is_none() {
+            if let Some(color) = parse_color_list(&config.theme.active_border_color) {
+                theme.active_border = Style::default().fg(color).add_modifier(Modifier::BOLD);
+            }
+            if let Some(color) = parse_color_list(&config.theme.inactive_border_color) {
+                theme.inactive_border = Style::default().fg(color);
+            }
+            if let Some(color) = parse_color_list(&config.theme.selected_line_bg_color) {
+                theme.selected_line = if color == Color::Reset {
+                    Style::default()
+                        .bg(Color::Reset)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().bg(color)
+                };
+            }
+            if let Some(color) = parse_color_list(&config.theme.options_text_color) {
+                theme.options_text = Style::default().fg(color);
+            }
         }
 
         theme.separator_char = config.file_header_separator_char.clone();
         theme.spinner_chars = config.spinner.clone();
 
         theme
+    }
+
+    /// Triadic Cold-Color theme (`cockpit`):
+    /// - Blue (`#89b4fa`): passive architecture (borders, remote branches)
+    /// - Cyan (`#94e2d5`): control trigger & focus (X=1 gutter, shortcut keys, active HEAD)
+    /// - Darkgray (`#585b70`): zero-noise metadata (inactive borders, commit hashes, descriptions)
+    /// - Zero-background selection (`bg = Reset` + `BOLD` + 1-cell cyan `│` gutter at X=1)
+    /// - Warm hues reserved for state: Orange (`#fab387`) for unstaged/unpushed churn, Red (`#f38ba8`) for conflicts
+    pub fn cockpit() -> Self {
+        let mut theme = Self::dark();
+        let blue = Color::Rgb(137, 180, 250);
+        let cyan = Color::Rgb(148, 226, 213);
+        let darkgray = Color::Rgb(88, 91, 112);
+        let orange = Color::Rgb(250, 179, 135);
+        let red = Color::Rgb(243, 139, 168);
+        let yellow = Color::Rgb(249, 226, 175);
+        let green = Color::Rgb(166, 227, 161);
+        let text = Color::Rgb(166, 173, 200);
+        let text_strong = Color::Rgb(205, 214, 244);
+
+        theme.active_border = Style::default().fg(blue).add_modifier(Modifier::BOLD);
+        theme.inactive_border = Style::default().fg(darkgray);
+        theme.selected_line = Style::default()
+            .bg(Color::Reset)
+            .add_modifier(Modifier::BOLD);
+        theme.selected_bg = Color::Reset;
+        theme.selection_gutter = Some(cyan);
+        theme.options_text = Style::default().fg(cyan).add_modifier(Modifier::BOLD);
+        theme.title = Style::default()
+            .fg(text_strong)
+            .add_modifier(Modifier::BOLD);
+
+        theme.accent = cyan;
+        theme.accent_secondary = yellow;
+        theme.text_dimmed = darkgray;
+        theme.text = text;
+        theme.text_strong = text_strong;
+        theme.separator = darkgray;
+        theme.popup_border = blue;
+        theme.status_bar = Style::default().fg(darkgray);
+        theme.spinner = Style::default().fg(cyan);
+
+        theme.branch_local = Style::default().fg(green);
+        theme.branch_remote = Style::default().fg(blue);
+        theme.branch_head = Style::default().fg(cyan).add_modifier(Modifier::BOLD);
+
+        theme.file_staged = Style::default().fg(green);
+        theme.file_unstaged = Style::default().fg(orange);
+        theme.file_untracked = Style::default().fg(cyan);
+        theme.file_conflicted = Style::default().fg(red).add_modifier(Modifier::BOLD);
+
+        theme.commit_hash = Style::default().fg(darkgray);
+        theme.commit_hash_unpushed = Style::default().fg(orange);
+        theme.commit_author = Style::default().fg(blue);
+        theme.commit_date = Style::default().fg(darkgray);
+        theme.commit_hash_pushed = darkgray;
+        theme.commit_hash_merged = darkgray;
+
+        theme.diff_add = Style::default().fg(green);
+        theme.diff_remove = Style::default().fg(red);
+        theme.change_added = green;
+        theme.change_deleted = red;
+        theme.change_renamed = yellow;
+        theme.change_copied = cyan;
+        theme.change_unmerged = red;
+
+        theme.ref_head = cyan;
+        theme.ref_remote = blue;
+        theme.ref_local = green;
+        theme.ref_tag = yellow;
+
+        theme
+    }
+
+    /// Dynamic Omarchy system theme loaded from `~/.local/state/omarchy/current/theme/colors.toml`.
+    /// Falls back to [`Theme::cockpit`] when `colors.toml` is absent or unreadable.
+    pub fn omarchy() -> Self {
+        if let Some(path) = omarchy_colors_path()
+            && let Ok(contents) = std::fs::read_to_string(&path)
+            && let Some(theme) = Self::from_omarchy_toml(&contents)
+        {
+            return theme;
+        }
+        Self::cockpit()
+    }
+
+    pub fn from_omarchy_toml(contents: &str) -> Option<Self> {
+        let colors: OmarchyColorsToml = toml::from_str(contents).ok()?;
+        let mut theme = Self::cockpit();
+
+        let blue = colors
+            .blue
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| colors.accent.as_deref().and_then(parse_hex))
+            .unwrap_or(Color::Rgb(137, 180, 250));
+        let border_accent = colors.accent.as_deref().and_then(parse_hex).unwrap_or(blue);
+        let cyan = colors
+            .bright_cyan
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| colors.cyan.as_deref().and_then(parse_hex))
+            .unwrap_or(theme.accent);
+        let muted = colors
+            .muted
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| colors.dark_foreground.as_deref().and_then(parse_hex))
+            .unwrap_or(theme.text_dimmed);
+        let fg = colors
+            .foreground
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(theme.text);
+        let fg_strong = colors
+            .bright_foreground
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| colors.light_foreground.as_deref().and_then(parse_hex))
+            .unwrap_or(fg);
+        let bg = colors
+            .background
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(Color::Rgb(26, 27, 38));
+        let green = colors
+            .green
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(Color::Green);
+        let red = colors
+            .red
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(Color::Red);
+        let yellow = colors
+            .yellow
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(Color::Yellow);
+        let orange = colors
+            .orange
+            .as_deref()
+            .and_then(parse_hex)
+            .or_else(|| colors.bright_yellow.as_deref().and_then(parse_hex))
+            .unwrap_or(yellow);
+        let magenta = colors
+            .magenta
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(Color::Magenta);
+
+        theme.active_border = Style::default()
+            .fg(border_accent)
+            .add_modifier(Modifier::BOLD);
+        theme.inactive_border = Style::default().fg(muted);
+        theme.selected_line = Style::default()
+            .bg(Color::Reset)
+            .add_modifier(Modifier::BOLD);
+        theme.selected_bg = Color::Reset;
+        theme.selection_gutter = Some(cyan);
+        theme.options_text = Style::default().fg(cyan).add_modifier(Modifier::BOLD);
+        theme.title = Style::default().fg(fg_strong).add_modifier(Modifier::BOLD);
+
+        theme.accent = cyan;
+        theme.accent_secondary = yellow;
+        theme.text_dimmed = muted;
+        theme.text = fg;
+        theme.text_strong = fg_strong;
+        theme.separator = muted;
+        theme.popup_border = border_accent;
+        theme.status_bar = Style::default().fg(muted);
+        theme.spinner = Style::default().fg(cyan);
+
+        theme.branch_local = Style::default().fg(green);
+        theme.branch_remote = Style::default().fg(blue);
+        theme.branch_head = Style::default().fg(cyan).add_modifier(Modifier::BOLD);
+
+        theme.file_staged = Style::default().fg(green);
+        theme.file_unstaged = Style::default().fg(orange);
+        theme.file_untracked = Style::default().fg(cyan);
+        theme.file_conflicted = Style::default().fg(red).add_modifier(Modifier::BOLD);
+
+        theme.commit_hash = Style::default().fg(muted);
+        theme.commit_hash_unpushed = Style::default().fg(orange);
+        theme.commit_author = Style::default().fg(blue);
+        theme.commit_date = Style::default().fg(muted);
+        theme.commit_hash_pushed = muted;
+        theme.commit_hash_merged = muted;
+
+        theme.diff_add = Style::default().fg(green);
+        theme.diff_remove = Style::default().fg(red);
+        theme.diff_context = Style::default().fg(muted);
+        theme.diff_add_bg = mix_colors(bg, green, 45);
+        theme.diff_remove_bg = mix_colors(bg, red, 45);
+        theme.diff_add_gutter_bg = mix_colors(theme.diff_add_bg, Color::Rgb(0, 0, 0), 110);
+        theme.diff_remove_gutter_bg = mix_colors(theme.diff_remove_bg, Color::Rgb(0, 0, 0), 110);
+        theme.diff_add_word = mix_colors(bg, green, 95);
+        theme.diff_remove_word = mix_colors(bg, red, 95);
+        theme.diff_line_number = muted;
+
+        theme.syntax_comment = muted;
+        theme.syntax_keyword = magenta;
+        theme.syntax_string = green;
+        theme.syntax_number = orange;
+        theme.syntax_function = blue;
+        theme.syntax_function_macro = magenta;
+        theme.syntax_type = yellow;
+        theme.syntax_operator = cyan;
+        theme.syntax_punctuation = fg;
+        theme.syntax_variable_builtin = red;
+        theme.syntax_variable_member = fg_strong;
+        theme.syntax_default = fg_strong;
+
+        theme.graph_colors = [
+            cyan,
+            blue,
+            green,
+            yellow,
+            magenta,
+            orange,
+            border_accent,
+            red,
+        ];
+
+        theme.change_added = green;
+        theme.change_deleted = red;
+        theme.change_renamed = yellow;
+        theme.change_copied = cyan;
+        theme.change_unmerged = red;
+
+        theme.ref_head = cyan;
+        theme.ref_remote = blue;
+        theme.ref_local = green;
+        theme.ref_tag = yellow;
+
+        Some(theme)
     }
 
     pub fn dark() -> Self {
@@ -334,6 +597,7 @@ impl Theme {
                 "✢".to_string(),
             ],
             selected_bg: Color::DarkGray,
+            selection_gutter: None,
             popup_border: Color::Cyan,
 
             // Command log
@@ -460,12 +724,19 @@ pub struct ThemeToml {
     pub background: Option<String>,
     pub background_panel: Option<String>,
     pub selected_bg: Option<String>,
+    pub selection_gutter: Option<String>,
     pub separator: Option<String>,
     pub popup_border: Option<String>,
 
     // Borders
     pub border: Option<String>,
     pub border_active: Option<String>,
+
+    // Semantic overrides
+    pub branch_remote: Option<String>,
+    pub file_unstaged: Option<String>,
+    pub commit_hash: Option<String>,
+    pub commit_hash_unpushed: Option<String>,
 
     // Diff
     pub diff_add: Option<String>,
@@ -573,6 +844,34 @@ impl ThemeToml {
             .as_deref()
             .and_then(parse_hex)
             .unwrap_or(dark.selected_bg);
+        let selection_gutter = self.selection_gutter.as_deref().and_then(parse_hex);
+        let selected_line = if selected_bg == Color::Reset {
+            Style::default()
+                .bg(Color::Reset)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().bg(selected_bg)
+        };
+        let branch_remote = self
+            .branch_remote
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(error);
+        let file_unstaged = self
+            .file_unstaged
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(warning);
+        let commit_hash = self
+            .commit_hash
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(warning);
+        let commit_hash_unpushed = self
+            .commit_hash_unpushed
+            .as_deref()
+            .and_then(parse_hex)
+            .unwrap_or(error);
         let separator = self
             .separator
             .as_deref()
@@ -727,7 +1026,7 @@ impl ThemeToml {
             borders: ratatui::widgets::Borders::ALL,
             panel_border_types: std::collections::HashMap::new(),
             panel_borders: std::collections::HashMap::new(),
-            selected_line: Style::default().bg(selected_bg),
+            selected_line,
             options_text: Style::default().fg(info),
             title: Style::default()
                 .fg(text_strong)
@@ -745,19 +1044,19 @@ impl ThemeToml {
             diff_add_word,
             diff_remove_word,
 
-            commit_hash: Style::default().fg(warning),
-            commit_hash_unpushed: Style::default().fg(error),
+            commit_hash: Style::default().fg(commit_hash),
+            commit_hash_unpushed: Style::default().fg(commit_hash_unpushed),
             commit_author: Style::default().fg(primary),
             commit_date: Style::default().fg(info),
             commit_hash_pushed: text_dimmed,
             commit_hash_merged: border,
 
             branch_local: Style::default().fg(success),
-            branch_remote: Style::default().fg(error),
+            branch_remote: Style::default().fg(branch_remote),
             branch_head: Style::default().fg(primary).add_modifier(Modifier::BOLD),
 
             file_staged: Style::default().fg(success),
-            file_unstaged: Style::default().fg(warning),
+            file_unstaged: Style::default().fg(file_unstaged),
             file_untracked: Style::default().fg(info),
             file_conflicted: Style::default().fg(error).add_modifier(Modifier::BOLD),
 
@@ -774,6 +1073,7 @@ impl ThemeToml {
             separator_char: dark.separator_char.clone(),
             spinner_chars: dark.spinner_chars.clone(),
             selected_bg,
+            selection_gutter,
             popup_border,
 
             cmd_log_border: border,
@@ -890,6 +1190,12 @@ impl ColorTheme {
         if self.id == "default" {
             return Theme::dark();
         }
+        if self.id == "omarchy" {
+            return Theme::omarchy();
+        }
+        if self.id == "cockpit" {
+            return Theme::cockpit();
+        }
 
         // Try user themes loaded at runtime first
         if let Some(theme) = load_user_theme(&self.id) {
@@ -915,6 +1221,57 @@ impl ColorTheme {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Default)]
+struct OmarchyColorsToml {
+    pub mode: Option<String>,
+    pub accent: Option<String>,
+    pub muted: Option<String>,
+    pub background: Option<String>,
+    pub foreground: Option<String>,
+    pub dark_foreground: Option<String>,
+    pub light_foreground: Option<String>,
+    pub bright_foreground: Option<String>,
+    pub red: Option<String>,
+    pub yellow: Option<String>,
+    pub orange: Option<String>,
+    pub green: Option<String>,
+    pub cyan: Option<String>,
+    pub blue: Option<String>,
+    pub magenta: Option<String>,
+    pub bright_yellow: Option<String>,
+    pub bright_cyan: Option<String>,
+}
+
+pub fn omarchy_colors_path() -> Option<std::path::PathBuf> {
+    if let Some(custom) = std::env::var_os("OMARCHY_COLORS_PATH") {
+        return Some(std::path::PathBuf::from(custom));
+    }
+    if let Some(state) = std::env::var_os("XDG_STATE_HOME") {
+        let p = std::path::PathBuf::from(state).join("omarchy/current/theme/colors.toml");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+    dirs::home_dir().map(|h| h.join(".local/state/omarchy/current/theme/colors.toml"))
+}
+
+fn omarchy_appearance() -> ThemeAppearance {
+    if let Some(path) = omarchy_colors_path()
+        && let Ok(contents) = std::fs::read_to_string(&path)
+        && let Ok(colors) = toml::from_str::<OmarchyColorsToml>(&contents)
+    {
+        if let Some(mode) = colors.mode.as_deref()
+            && let Some(app) = ThemeAppearance::parse(mode)
+        {
+            return app;
+        }
+        if let Some(bg) = colors.background.as_deref() {
+            return appearance_from_hex(bg);
+        }
+    }
+    ThemeAppearance::Dark
+}
+
 /// All available color themes (cached on first access).
 pub static COLOR_THEMES: once_cell::sync::Lazy<Vec<ColorTheme>> =
     once_cell::sync::Lazy::new(load_color_themes);
@@ -931,6 +1288,14 @@ pub fn load_color_themes() -> Vec<ColorTheme> {
         appearance: ThemeAppearance::Dark,
     });
     seen_ids.insert("default".to_string());
+
+    // Built-in dynamic Omarchy system theme
+    themes.push(ColorTheme {
+        name: "Omarchy".to_string(),
+        id: "omarchy".to_string(),
+        appearance: omarchy_appearance(),
+    });
+    seen_ids.insert("omarchy".to_string());
 
     // 2. Embedded themes (generated + custom built-in)
     for dir in &[&GENERATED_THEMES_DIR, &CUSTOM_THEMES_DIR] {
@@ -1118,6 +1483,7 @@ fn parse_color_list(colors: &[String]) -> Option<Color> {
 fn parse_color(s: &str) -> Option<Color> {
     match s.to_lowercase().as_str() {
         "default" => None,
+        "reset" | "transparent" | "none" => Some(Color::Reset),
         "black" => Some(Color::Black),
         "red" => Some(Color::Red),
         "green" => Some(Color::Green),
@@ -1125,6 +1491,8 @@ fn parse_color(s: &str) -> Option<Color> {
         "blue" => Some(Color::Blue),
         "magenta" => Some(Color::Magenta),
         "cyan" => Some(Color::Cyan),
+        "darkgray" | "dark_gray" => Some(Color::DarkGray),
+        "gray" | "grey" => Some(Color::Gray),
         "white" => Some(Color::White),
         s if s.starts_with('#') && s.len() == 7 => {
             let r = u8::from_str_radix(&s[1..3], 16).ok()?;
@@ -1133,5 +1501,74 @@ fn parse_color(s: &str) -> Option<Color> {
             Some(Color::Rgb(r, g, b))
         }
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cockpit_theme_is_registered_and_uses_triadic_zero_background() {
+        let found = COLOR_THEMES.iter().find(|t| t.id == "cockpit");
+        assert!(found.is_some(), "cockpit theme must be in COLOR_THEMES");
+
+        let theme = found.unwrap().to_theme();
+        assert_eq!(theme.selected_bg, Color::Reset);
+        assert_eq!(theme.selected_line.bg, Some(Color::Reset));
+        assert!(theme.selected_line.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(theme.selection_gutter, Some(Color::Rgb(148, 226, 213)));
+        assert_eq!(theme.active_border.fg, Some(Color::Rgb(137, 180, 250)));
+        assert_eq!(theme.branch_remote.fg, Some(Color::Rgb(137, 180, 250)));
+        assert_eq!(theme.file_unstaged.fg, Some(Color::Rgb(250, 179, 135)));
+        assert_eq!(theme.commit_hash.fg, Some(Color::Rgb(88, 91, 112)));
+        assert_eq!(
+            theme.commit_hash_unpushed.fg,
+            Some(Color::Rgb(250, 179, 135))
+        );
+    }
+
+    #[test]
+    fn omarchy_theme_parses_colors_toml_and_recolours() {
+        let sample_a = r##"
+mode = "dark"
+accent = "#7aa2f7"
+muted = "#414868"
+background = "#1a1b26"
+foreground = "#a9b1d6"
+bright_foreground = "#c0caf5"
+red = "#f7768e"
+yellow = "#e0af68"
+orange = "#eb927b"
+green = "#9ece6a"
+cyan = "#449dab"
+blue = "#7aa2f7"
+magenta = "#ad8ee6"
+bright_cyan = "#0db9d7"
+"##;
+        let theme_a = Theme::from_omarchy_toml(sample_a).expect("parse sample_a");
+        assert_eq!(theme_a.active_border.fg, Some(Color::Rgb(0x7a, 0xa2, 0xf7)));
+        assert_eq!(theme_a.selection_gutter, Some(Color::Rgb(0x0d, 0xb9, 0xd7)));
+        assert_eq!(theme_a.file_unstaged.fg, Some(Color::Rgb(0xeb, 0x92, 0x7b)));
+        assert_eq!(theme_a.selected_bg, Color::Reset);
+
+        let sample_b = r##"
+mode = "dark"
+accent = "#cba6f7"
+muted = "#585b70"
+background = "#1e1e2e"
+foreground = "#cdd6f4"
+red = "#f38ba8"
+yellow = "#f9e2af"
+orange = "#fab387"
+green = "#a6e3a1"
+cyan = "#94e2d5"
+blue = "#89b4fa"
+magenta = "#f5c2e7"
+"##;
+        let theme_b = Theme::from_omarchy_toml(sample_b).expect("parse sample_b");
+        assert_eq!(theme_b.active_border.fg, Some(Color::Rgb(0xcb, 0xa6, 0xf7)));
+        assert_eq!(theme_b.selection_gutter, Some(Color::Rgb(0x94, 0xe2, 0xd5)));
+        assert_ne!(theme_a.active_border.fg, theme_b.active_border.fg);
     }
 }

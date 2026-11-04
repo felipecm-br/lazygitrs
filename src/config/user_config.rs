@@ -208,9 +208,12 @@ impl Default for GuiConfig {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ThemeConfig {
+    /// Optional theme preset ID (`"omarchy"`, `"cockpit"`, `"catppuccin-mocha"`, etc.).
+    /// Can be specified either as `gui:\n  theme: omarchy` or `gui:\n  theme:\n    preset: omarchy`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset: Option<String>,
     #[serde(rename = "activeBorderColor")]
     pub active_border_color: Vec<String>,
     #[serde(rename = "inactiveBorderColor")]
@@ -224,10 +227,69 @@ pub struct ThemeConfig {
 impl Default for ThemeConfig {
     fn default() -> Self {
         Self {
+            preset: None,
             active_border_color: vec!["green".to_string()],
             inactive_border_color: vec!["default".to_string()],
             selected_line_bg_color: vec!["blue".to_string()],
             options_text_color: vec!["blue".to_string()],
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ThemeConfig {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(default)]
+        struct ThemeConfigMap {
+            preset: Option<String>,
+            #[serde(rename = "activeBorderColor")]
+            active_border_color: Vec<String>,
+            #[serde(rename = "inactiveBorderColor")]
+            inactive_border_color: Vec<String>,
+            #[serde(rename = "selectedLineBgColor")]
+            selected_line_bg_color: Vec<String>,
+            #[serde(rename = "optionsTextColor")]
+            options_text_color: Vec<String>,
+        }
+
+        impl Default for ThemeConfigMap {
+            fn default() -> Self {
+                let d = ThemeConfig::default();
+                Self {
+                    preset: d.preset,
+                    active_border_color: d.active_border_color,
+                    inactive_border_color: d.inactive_border_color,
+                    selected_line_bg_color: d.selected_line_bg_color,
+                    options_text_color: d.options_text_color,
+                }
+            }
+        }
+
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum ThemeConfigRepr {
+            Preset(String),
+            Map(ThemeConfigMap),
+        }
+
+        match ThemeConfigRepr::deserialize(deserializer)? {
+            ThemeConfigRepr::Preset(name) => {
+                let trimmed = name.trim().to_string();
+                Ok(ThemeConfig {
+                    preset: (!trimmed.is_empty()).then_some(trimmed),
+                    ..ThemeConfig::default()
+                })
+            }
+            ThemeConfigRepr::Map(m) => Ok(ThemeConfig {
+                preset: m.preset,
+                active_border_color: m.active_border_color,
+                inactive_border_color: m.inactive_border_color,
+                selected_line_bg_color: m.selected_line_bg_color,
+                options_text_color: m.options_text_color,
+            }),
         }
     }
 }
@@ -781,5 +843,36 @@ git:
             Some(&"/path/that/does/not/exist/definitely/config.yml".to_string()),
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_theme_preset_string_and_map() {
+        let yaml_preset = r#"
+gui:
+  theme: omarchy
+"#;
+        let config: UserConfig = serde_yaml::from_str(yaml_preset).unwrap();
+        assert_eq!(config.gui.theme.preset.as_deref(), Some("omarchy"));
+
+        let yaml_cockpit = r#"
+gui:
+  theme: cockpit
+"#;
+        let cockpit_cfg: UserConfig = serde_yaml::from_str(yaml_cockpit).unwrap();
+        assert_eq!(cockpit_cfg.gui.theme.preset.as_deref(), Some("cockpit"));
+        let theme = cockpit_cfg.theme();
+        assert_eq!(theme.selected_bg, ratatui::style::Color::Reset);
+        assert!(theme.selection_gutter.is_some());
+
+        let yaml_map = r#"
+gui:
+  theme:
+    activeBorderColor:
+      - cyan
+      - bold
+"#;
+        let map_cfg: UserConfig = serde_yaml::from_str(yaml_map).unwrap();
+        assert_eq!(map_cfg.gui.theme.preset, None);
+        assert_eq!(map_cfg.gui.theme.active_border_color, vec!["cyan", "bold"]);
     }
 }
