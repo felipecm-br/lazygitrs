@@ -67,6 +67,9 @@ pub struct InputReader {
     /// When true the reader thread stops calling `event::poll`/`read` so another
     /// process (e.g. `hx`) can own stdin. Crossterm's reader is process-wide.
     paused: Arc<AtomicBool>,
+    /// Set by the reader thread once it has observed `paused` and is no longer
+    /// inside a crossterm call, so `pause()` can hand the tty over safely.
+    parked: Arc<AtomicBool>,
 }
 
 impl InputReader {
@@ -74,17 +77,20 @@ impl InputReader {
         let (tx, rx) = mpsc::channel();
         let paused = Arc::new(AtomicBool::new(false));
         let paused_thread = Arc::clone(&paused);
+        let parked = Arc::new(AtomicBool::new(false));
+        let parked_thread = Arc::clone(&parked);
         thread::Builder::new()
             .name("input-reader".into())
             .spawn(move || {
                 // Exits when the receiver goes away at shutdown.
                 loop {
                     if paused_thread.load(Ordering::SeqCst) {
+                        parked_thread.store(true, Ordering::SeqCst);
                         thread::sleep(Duration::from_millis(20));
                         continue;
                     }
-                    // Short polls so `pause()` can take effect without waiting
-                    // on the old 1-hour `event::poll` (which steals hx's stdin).
+                    parked_thread.store(false, Ordering::SeqCst);
+                    // Long waits; `pause()` interrupts them (see `wake_reader`).
                     match next_events_interruptible(&mut CrosstermSource, &paused_thread) {
                         Ok(None) => continue, // paused mid-wait or idle tick
                         Ok(Some(events)) => {
@@ -99,19 +105,25 @@ impl InputReader {
                 }
             })
             .expect("spawn input reader thread");
-        Self { rx, paused }
+        Self { rx, paused, parked }
     }
 
     /// Stop polling the terminal so a subprocess can read stdin.
     pub fn pause(&self) {
         self.paused.store(true, Ordering::SeqCst);
-        // Wait for the reader to finish its current short poll (≤50ms).
-        thread::sleep(Duration::from_millis(60));
+        wake_reader();
+        // Wait until the reader has left crossterm and parked. Bounded so a
+        // missed wake degrades to the old fixed delay instead of hanging.
+        let deadline = Instant::now() + READER_POLL + Duration::from_millis(100);
+        while !self.parked.load(Ordering::SeqCst) && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(1));
+        }
     }
 
     /// Resume polling after a suspended subprocess exits.
     pub fn resume(&self) {
         self.paused.store(false, Ordering::SeqCst);
+        self.parked.store(false, Ordering::SeqCst);
     }
 
     /// Drop any events that arrived around a suspend/resume boundary.
@@ -159,7 +171,29 @@ impl EventSource for CrosstermSource {
     }
 }
 
-const PAUSE_POLL: Duration = Duration::from_millis(50);
+/// How long one idle wait on the terminal lasts.
+///
+/// Kept long on purpose. With `use-dev-tty`, crossterm polls through
+/// `filedescriptor::poll`, which truncates the timeout to whole milliseconds,
+/// and crossterm loops until its deadline. So every call ends with up to ~1ms
+/// of zero-timeout `poll` calls in a tight loop. At the old 50ms period that
+/// was ~2% of a core at idle, most of lazygitrs' idle CPU. `pause()` no
+/// longer depends on this period because it wakes the reader explicitly.
+const READER_POLL: Duration = Duration::from_secs(1);
+
+/// Interrupt a blocked `event::poll` on the reader thread.
+///
+/// Raising SIGWINCH on our own process makes crossterm's signal handler write
+/// to its resize pipe, which the reader's `poll` is watching. That wakes it
+/// immediately, even if the signal lands just before the reader enters `poll`,
+/// because the pipe stays readable. The resulting `Resize` event reports the
+/// unchanged size and is discarded by the `drain()` that follows `pause()`.
+fn wake_reader() {
+    #[cfg(unix)]
+    unsafe {
+        libc::raise(libc::SIGWINCH);
+    }
+}
 
 /// Like [`next_events`], but returns `Ok(None)` when `paused` becomes true so
 /// the reader thread can yield the tty to a suspended editor.
@@ -171,7 +205,7 @@ fn next_events_interruptible(
         if paused.load(Ordering::SeqCst) {
             return Ok(None);
         }
-        if let Some(event) = source.next(PAUSE_POLL)? {
+        if let Some(event) = source.next(READER_POLL)? {
             break event;
         }
     };
