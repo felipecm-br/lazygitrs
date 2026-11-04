@@ -27,6 +27,9 @@ gen-benchmarks:
     bun scripts/gen-benchmarks.ts
     just sync_readme
 
+gen-keybindings:
+    cargo run -- --print-keybindings-md > _docs/KEYBINDINGS.md
+
 install:
     cargo build --release
     mkdir -p "$HOME/.local/bin"

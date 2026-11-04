@@ -1,12 +1,4 @@
-pub mod acp;
-mod app;
-mod config;
-mod git;
-mod gui;
-mod model;
-mod os;
-mod pager;
-mod upgrade;
+use lazygitrs::{app, config, os, upgrade};
 
 use std::path::PathBuf;
 
@@ -52,6 +44,10 @@ struct Cli {
     /// Print the default configuration YAML to stdout and exit
     #[arg(long)]
     print_default_config: bool,
+
+    /// Print keybindings markdown reference to stdout and exit
+    #[arg(long)]
+    print_keybindings_md: bool,
 
     /// Configuration file or preset name to use (e.g. 'popup' or ~/.config/lazygitrs/config.yml)
     #[arg(short = 'c', long = "config")]
@@ -132,6 +128,15 @@ fn main() {
         let config = config::user_config::UserConfig::default();
         let yaml = serde_yaml::to_string(&config).unwrap();
         println!("{}", yaml);
+        std::process::exit(0);
+    }
+
+    if cli.print_keybindings_md {
+        let config = config::user_config::UserConfig::default();
+        print!(
+            "{}",
+            config::keybindings::generate_keybindings_md(&config.keybinding)
+        );
         std::process::exit(0);
     }
 

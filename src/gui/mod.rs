@@ -7,6 +7,7 @@ pub mod modes;
 pub mod popup;
 pub mod presentation;
 pub mod scroll;
+pub mod state;
 pub mod views;
 
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -48,6 +49,7 @@ use self::popup::{
     list_picker_filtered_display_idx, list_picker_matching_indices, list_picker_next_match,
     list_picker_prev_match,
 };
+pub use self::state::{AcpState, CommitFilterState, EditorHandoff};
 
 /// Compute the visible list height for a list picker popup, given terminal height.
 /// Must match the rendering formula: popup 60% height, minus borders (2), search bar + sep + hint (3).
@@ -668,21 +670,8 @@ pub struct Gui {
     ai_commit_rx: mpsc::Receiver<AiCommitResult>,
     /// Sender cloned into background threads for AI commit generation.
     ai_commit_tx: mpsc::Sender<AiCommitResult>,
-    /// Receiver for ACP annotations
-    acp_rx: mpsc::Receiver<crate::acp::AcpEvent>,
-    /// Shared AI session ID registered via `POST /session-api {action:"register"}`.
-    /// Used to expand `{{session_id}}` in the `notifyCommand` template.
-    acp_session_id: crate::acp::SessionId,
-    /// SSE broadcast sender — pushes "note sent" events to connected AI CLIs
-    /// listening on `GET /session-api/events`.
-    sse_tx: crate::acp::SseSender,
-    /// Base URL of the AI CLI's HTTP server (e.g. opencode's
-    /// `http://127.0.0.1:4096`). When set, prompts are pushed directly to
-    /// the running TUI instead of spawning a subprocess.
-    acp_server_url: Arc<Mutex<Option<String>>>,
-    /// Notify command template registered by the AI CLI via
-    /// `POST /session-api {"action":"register"}`.
-    acp_notify_command: Arc<Mutex<Option<String>>>,
+    /// Agent-Client Protocol (ACP) review notes integration state.
+    pub(crate) acp: AcpState,
     /// Receiver for incremental commit pages loaded after the first capped page.
     commit_page_rx: mpsc::Receiver<CommitPageResult>,
     /// Sender cloned into background threads for incremental commit loading.
@@ -754,12 +743,8 @@ pub struct Gui {
     last_input_at: Instant,
     /// Process start, the clock for spinner animation.
     started_at: Instant,
-    /// Active branch filter for commits panel. When non-empty, only commits from these branches are shown.
-    pub commit_branch_filter: Vec<String>,
-    /// Optional path used to filter the main commits panel.
-    pub commit_path_filter: Option<String>,
-    /// Optional author identity used to filter the main commits panel.
-    pub commit_author_filter: Vec<String>,
+    /// Active filters applied to the commits panel (branch, path, author).
+    pub commit_filter: CommitFilterState,
     /// Hash of the commit whose files are being viewed in CommitFiles context.
     pub commit_files_hash: String,
     /// First line of the commit message for the commit being viewed.
@@ -801,7 +786,7 @@ pub struct Gui {
     /// Branch name from checkout-by-name; used to offer create-on-miss when checkout fails.
     pub(crate) pending_checkout_by_name: Option<String>,
     /// Editor to run after suspending the TUI (hx/nvim/vim).
-    pending_editor_launch: Option<crate::config::user_config::EditorLaunch>,
+    pub editor_handoff: EditorHandoff,
     /// Copied commit hashes for cherry-pick paste (newest first).
     pub cherry_pick_clipboard: Vec<String>,
     /// Anchor index for range selection in commits list (None = not in range mode).
@@ -1232,11 +1217,13 @@ impl Gui {
             diff_prefetch_inflight: HashSet::new(),
             ai_commit_rx,
             ai_commit_tx,
-            acp_rx,
-            acp_session_id,
-            sse_tx,
-            acp_server_url,
-            acp_notify_command,
+            acp: AcpState {
+                rx: acp_rx,
+                session_id: acp_session_id,
+                sse_tx,
+                server_url: acp_server_url,
+                notify_command: acp_notify_command,
+            },
             commit_page_rx,
             commit_page_tx,
             commit_page_loading: false,
@@ -1269,9 +1256,11 @@ impl Gui {
             last_refresh_at: Instant::now(),
             last_input_at: Instant::now(),
             started_at: Instant::now(),
-            commit_branch_filter: Vec::new(),
-            commit_path_filter: startup_path_filter.clone(),
-            commit_author_filter: Vec::new(),
+            commit_filter: CommitFilterState {
+                branch: Vec::new(),
+                path: startup_path_filter.clone(),
+                author: Vec::new(),
+            },
             commit_files_hash: String::new(),
             commit_files_message: String::new(),
             commit_file_tree_nodes: Vec::new(),
@@ -1287,7 +1276,7 @@ impl Gui {
             remote_op_label: None,
             remote_op_success_at: None,
             pending_checkout_by_name: None,
-            pending_editor_launch: None,
+            editor_handoff: EditorHandoff::default(),
             cherry_pick_clipboard: Vec::new(),
             range_select_anchor: None,
             commit_message_history: commit_history,
@@ -1373,7 +1362,7 @@ impl Gui {
         launch: crate::config::user_config::EditorLaunch,
     ) -> Result<()> {
         if launch.suspend {
-            self.pending_editor_launch = Some(launch);
+            self.editor_handoff.pending_launch = Some(launch);
             Ok(())
         } else {
             crate::os::cmd::log_command(&launch.display_cmd());
@@ -1460,7 +1449,7 @@ impl Gui {
         }
     }
 
-    fn render_ui(&mut self, frame: &mut Frame, theme: &crate::config::Theme) {
+    pub fn render_ui(&mut self, frame: &mut Frame, theme: &crate::config::Theme) {
         if self.rebase_mode.active {
             presentation::rebase_mode::render(frame, &mut self.rebase_mode, theme);
             // Render popup overlay on top of rebase mode
@@ -1578,16 +1567,17 @@ impl Gui {
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut active_commit_filters: Vec<String> = self
-                .commit_branch_filter
+                .commit_filter
+                .branch
                 .iter()
                 .map(|branch| format!("branch: {branch}"))
                 .collect();
-            if let Some(path) = self.commit_path_filter.as_deref() {
+            if let Some(path) = self.commit_filter.path.as_deref() {
                 active_commit_filters.push(format!("path: {path}"));
             }
-            if !self.commit_author_filter.is_empty() {
+            if !self.commit_filter.author.is_empty() {
                 active_commit_filters
-                    .push(format!("author: {}", self.commit_author_filter.join(", ")));
+                    .push(format!("author: {}", self.commit_filter.author.join(", ")));
             }
             views::render(
                 frame,
@@ -1855,10 +1845,7 @@ impl Gui {
                     // Re-apply filters / selection-dependent views after stream
                     // completes (initial load and background refresh). Needed so
                     // startup `-f/--filter` takes effect once commits arrive.
-                    if (was_refresh
-                        || self.commit_path_filter.is_some()
-                        || !self.commit_branch_filter.is_empty()
-                        || !self.commit_author_filter.is_empty())
+                    if (was_refresh || self.commit_filter.is_active())
                         && let Err(err) = self.after_model_refresh()
                     {
                         self.show_error("Refresh failed", err);
@@ -1964,7 +1951,7 @@ impl Gui {
             self.handle_event_batch(events);
 
             // Terminal editors: leave alt screen, run hx/nvim, restore TUI.
-            if let Some(launch) = self.pending_editor_launch.take() {
+            if let Some(launch) = self.editor_handoff.pending_launch.take() {
                 self.run_suspended_editor(terminal, input, keyboard_enhanced, launch)?;
             }
 
@@ -2172,7 +2159,7 @@ impl Gui {
     }
 
     fn receive_acp_results(&mut self) {
-        while let Ok(event) = self.acp_rx.try_recv() {
+        while let Ok(event) = self.acp.rx.try_recv() {
             match event {
                 crate::acp::AcpEvent::ApplyNotes(ctx) => {
                     self.apply_acp_notes(ctx);
@@ -3051,7 +3038,7 @@ impl Gui {
                     items,
                     "Path",
                     Box::new(|gui, path| {
-                        gui.commit_path_filter =
+                        gui.commit_filter.path =
                             crate::gui::controller::commits::nonempty_for_filter(path);
                         crate::gui::controller::commits::apply_commit_filters_and_focus(gui)
                     }),
@@ -3132,9 +3119,9 @@ impl Gui {
         let git = Arc::clone(&self.git);
         let tx = self.commit_page_tx.clone();
         let filter = crate::git::commit::CommitFilter {
-            branches: self.commit_branch_filter.clone(),
-            path: self.commit_path_filter.clone(),
-            authors: self.commit_author_filter.clone(),
+            branches: self.commit_filter.branch.clone(),
+            path: self.commit_filter.path.clone(),
+            authors: self.commit_filter.author.clone(),
         };
 
         std::thread::spawn(move || {
@@ -7505,10 +7492,7 @@ impl Gui {
                         ),
                     );
                 }
-                if self.commit_path_filter.is_some()
-                    || !self.commit_author_filter.is_empty()
-                    || !self.commit_branch_filter.is_empty()
-                {
+                if self.commit_filter.is_active() {
                     entries.insert(
                         0,
                         CommandEntry::keybinding("<esc>".into(), "Reset commit filter".into()),
@@ -10425,10 +10409,10 @@ impl Gui {
         note_text: String,
     ) {
         let repo_path = self.git.repo_path().to_path_buf();
-        let acp_server_url = Arc::clone(&self.acp_server_url);
-        let acp_notify_command = Arc::clone(&self.acp_notify_command);
-        let acp_session_id = Arc::clone(&self.acp_session_id);
-        let sse_tx = self.sse_tx.clone();
+        let acp_server_url = Arc::clone(&self.acp.server_url);
+        let acp_notify_command = Arc::clone(&self.acp.notify_command);
+        let acp_session_id = Arc::clone(&self.acp.session_id);
+        let sse_tx = self.acp.sse_tx.clone();
 
         std::thread::spawn(move || {
             // 1. Try TUI push (opencode /tui/append-prompt + /tui/submit-prompt).
@@ -11237,14 +11221,13 @@ impl Gui {
     }
 
     fn commit_filter_for_load(&self) -> Option<crate::git::commit::CommitFilter> {
-        let has = self.commit_path_filter.is_some()
-            || !self.commit_author_filter.is_empty()
-            || !self.commit_branch_filter.is_empty();
-        has.then(|| crate::git::commit::CommitFilter {
-            branches: self.commit_branch_filter.clone(),
-            path: self.commit_path_filter.clone(),
-            authors: self.commit_author_filter.clone(),
-        })
+        self.commit_filter
+            .is_active()
+            .then(|| crate::git::commit::CommitFilter {
+                branches: self.commit_filter.branch.clone(),
+                path: self.commit_filter.path.clone(),
+                authors: self.commit_filter.author.clone(),
+            })
     }
 
     fn refresh(&mut self) -> Result<()> {
@@ -11266,10 +11249,10 @@ impl Gui {
             model.replace_keeping_file_order(new_model);
 
             // If branch filters are active, reload commits for those branches only.
-            if !self.commit_branch_filter.is_empty()
+            if !self.commit_filter.branch.is_empty()
                 && let Ok(filtered) = self
                     .git
-                    .load_commits_for_branches(&self.commit_branch_filter, commit_limit)
+                    .load_commits_for_branches(&self.commit_filter.branch, commit_limit)
             {
                 model.commits = filtered;
             }
