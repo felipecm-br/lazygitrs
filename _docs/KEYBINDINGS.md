@@ -7,10 +7,10 @@ This document serves as the definitive reference for keyboard navigation, diff r
 ## 🔬 1. Design & Biomechanical Principles
 
 1. **Home Row Anchored ($H = 0$):** High-frequency inspection and navigation operations are accessible directly from the resting Home Row ($ASDF / JKL;$) without requiring awkward reaches or mouse intervention.
-2. **Sub-100ms Doherty Threshold:** Built natively in Rust with zero runtime garbage collection, lazygitrs renders at 60 FPS with immediate UI feedback and instant subprocess teardown ($0\text{ ms}$).
+2. **Sub-100ms Doherty Threshold:** Built natively in Rust with zero runtime garbage collection, lazygitrs reaches first frame in ~49 ms and idles at ~0.35% CPU (demand-driven wake cadence: 16 ms busy, 50 ms after input, ≤1 s idle).
 3. **Hierarchical Context Unwinding (Cascading Escape):**
    - Inside Diff or Submenus: Pressing `Esc` unwinds focus back to the Primary Anchor (Files panel `[2]`) without dismissing the interface.
-   - At the Root List: Pressing `Esc` (or `q` / `Ctrl+C`) immediately exits or closes the popup overlay.
+   - At the Root List: Pressing `Esc` in `--popup` / `outerFrame` mode immediately dismisses the popup; in full-screen mode it requires a double-tap within 400 ms so unwinding from sub-views never closes the session by accident.
 4. **Dynamic Status Bar Synchronicity:** Control hints in the bottom bar dynamically query the runtime configuration (e.g., `commits.open_log_menu`), guaranteeing that custom remappings always reflect live reality without stale text.
 5. **Worktree Port Isolation:** Each Git worktree maintains its own dynamic HTTP port stored in `.lazygitrs.port`, enabling multiple concurrent agent sessions without port collisions or crosstalk.
 
@@ -78,7 +78,9 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)**:
 | Key / Chord | Context / Mode | Action Executed | Biomechanical Mechanics | KLM Cost ($T$) | Ergonomic Rationale |
 | :--- | :--- | :--- | :--- | :---: | :--- |
 | **`Esc`** | Diff / Submenus | Unwind Focus to Files List | Left Pinky single tap (or CapsLock tap) | $100\text{ ms}$ | Hierarchical escape; prevents accidental closing during deep review. |
-| **`Esc`** | Root Files List | Close Lazygitrs / Dismiss Popup | Left Pinky single tap | $100\text{ ms}$ | Instant $0\text{ ms}$ popup teardown without cursor or screen tearing. |
+| **`Esc`** | Root Files List | Dismiss Popup (or Double-Tap in Fullscreen) | Left Pinky single / double tap | $100\text{ ms}$ / $240\text{ ms}$ | Instant popup dismissal; double-tap guard in fullscreen prevents accidental exits. |
+| **`Ctrl + W` `h` / `l` / `k` / `j` / `=`** | Global | Shrink / Expand / Maximize / Reset Panels | CapsLock + W, then Home Row `h`/`l`/`k`/`j`/`=` | $240\text{ ms}$ | Vim window-resize idiom ($H = 0$); avoids `Alt` thumb adduction (`Alt+h/l/k/j/r` kept for compatibility). |
+| **`Ctrl + A`** | Files Panel | Generate AI Commit Message | CapsLock (Pinky) + A (Left Pinky) | $120\text{ ms}$ | Direct 1-chord AI commit generation from Files panel. |
 | **`q`** / **`Ctrl + C`**| Anywhere | Hard Exit Application | Left Pinky direct tap / Left Pinky + Left Index | $100\text{ ms}$ / $120\text{ ms}$ | Standard terminal exit fallback. |
 | **`1` / `2` / `3` / `4` / `5`** | Root Navigation | Jump to Status / Files / Branches / Commits / Stash | Number row direct single tap | $120\text{ ms}$ | Direct panel selection bypassing sequential Tab traversal. |
 | **`:`** (Colon) | Global | Open Shell Command Prompt | Shift + `;` (Right Pinky chord) | $130\text{ ms}$ | Vim ex-command mnemonic; executes arbitrary scripts in repo root. |
@@ -117,4 +119,4 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)**:
 ## 🔗 Related Resources
 - [AI Review Architecture](AI_INTEGRATION_ARCHITECTURE.md): Zero-dependency fallback and tmux injection.
 - [Universal AI Integration](UNIVERSAL_INTEGRATION.md): Real-time SSE and multiplexer integration.
-- [Review Skill Documentation](skills/lazygitrs-review/SKILL.md): Agent-side RPC and lifecycle integration.
+- [Review Skill Documentation](../.agents/skills/lazygitrs-review/SKILL.md): Agent-side RPC and lifecycle integration.

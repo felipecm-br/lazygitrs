@@ -18,6 +18,17 @@ The goal: everything lazygit does, but faster and with opinions I actually agree
 > - [git](https://git-scm.com)
 > - [gh](https://cli.github.com)
 
+**This fork (`felipecm-br/lazygitrs`):**
+
+```sh
+cargo install --git https://github.com/felipecm-br/lazygitrs
+# or from a local checkout:
+cargo install --path .
+just install
+```
+
+**Upstream (`Blankeos/lazygitrs`):**
+
 ```sh
 brew install blankeos/tap/lazygitrs # Homebrew (macOS/Linux)
 npm install -g lazygitrs            # or npm
@@ -92,7 +103,9 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)** ($H=0$, H
 | Key / Chord | Context / Mode | Action Executed | Biomechanical Mechanics | KLM Cost ($T$) | Ergonomic Rationale |
 | :--- | :--- | :--- | :--- | :---: | :--- |
 | **`Esc`** | Diff / Submenus | Unwind Focus to Files List | Left Pinky single tap (or CapsLock tap) | $100\text{ ms}$ | Hierarchical escape; prevents accidental closing during deep review. |
-| **`Esc`** | Root Files List | Close Lazygitrs / Dismiss Popup | Left Pinky single tap | $100\text{ ms}$ | Instant $0\text{ ms}$ popup teardown without cursor or screen tearing. |
+| **`Esc`** | Root Files List | Dismiss Popup (or Double-Tap in Fullscreen) | Left Pinky single / double tap | $100\text{ ms}$ / $240\text{ ms}$ | Instant popup dismissal; double-tap guard in fullscreen prevents accidental exits. |
+| **`Ctrl + W` `h` / `l` / `k` / `j` / `=`** | Global | Shrink / Expand / Maximize / Reset Panels | CapsLock + W, then Home Row `h`/`l`/`k`/`j`/`=` | $240\text{ ms}$ | Vim window-resize idiom ($H = 0$); avoids `Alt` thumb adduction (`Alt+h/l/k/j/r` kept for compatibility). |
+| **`Ctrl + A`** | Files Panel | Generate AI Commit Message | CapsLock (Pinky) + A (Left Pinky) | $120\text{ ms}$ | Direct 1-chord AI commit generation from Files panel. |
 | **`q`** / **`Ctrl + C`**| Anywhere | Hard Exit Application | Left Pinky direct tap / Left Pinky + Left Index | $100\text{ ms}$ / $120\text{ ms}$ | Standard terminal exit fallback. |
 | **`1` / `2` / `3` / `4` / `5`** | Root Navigation | Jump to Status / Files / Branches / Commits / Stash | Number row direct single tap | $120\text{ ms}$ | Direct panel selection bypassing sequential Tab traversal. |
 | **`:`** (Colon) | Global | Open Shell Command Prompt | Shift + `;` (Right Pinky chord) | $130\text{ ms}$ | Vim ex-command mnemonic; executes arbitrary scripts in repo root. |
@@ -126,7 +139,7 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)** ($H=0$, H
 | **`d`** (on note) | Diff View | Delete Review Note | Left Middle tap on Home Row `d` | $100\text{ ms}$ | Destructive single-note dismissal with auto-selection of next note. |
 | **`Enter` / `o`** | Diff View | View Note Full Details Popup | Right Pinky tap / Right Ring reach | $100\text{ ms}$ / $110\text{ ms}$ | Full markdown rendering of rationale, author, and timestamp. |
 
-> 📖 **Definitive Keybinding Reference**: For the full architectural deep-dive, design principles, and worktree isolation models, see [KEYBINDINGS.md](KEYBINDINGS.md).
+> 📖 **Definitive Keybinding Reference**: For the full architectural deep-dive, design principles, and worktree isolation models, see [_docs/KEYBINDINGS.md](_docs/KEYBINDINGS.md).
 
 ### Image diffs
 
