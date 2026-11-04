@@ -32,9 +32,10 @@ jobs:
           # 🍎 macOS Apple Silicon (M1/M2/M3/M4)
           - target: aarch64-apple-darwin
             os: macos-latest
-          # 🍎 macOS Intel (x86_64)
+          # 🍎 macOS Intel (x86_64) — cross-compiled on Apple Silicon; the
+          # macos-13 Intel runner image is retired and never picks up jobs.
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-latest
           # 🪟 Windows 64-bit
           - target: x86_64-pc-windows-msvc
             os: windows-latest
