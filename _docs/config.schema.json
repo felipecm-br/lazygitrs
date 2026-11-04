@@ -1,0 +1,793 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "lazygitrs configuration (lazygit-compatible). Generated from the built-in defaults; regenerate with `lazygitrs --print-config-schema`.",
+  "properties": {
+    "aiNotes": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "customCommands": {
+      "default": [],
+      "items": {
+        "properties": {
+          "command": {
+            "default": "",
+            "type": "string"
+          },
+          "context": {
+            "default": "",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "type": "string"
+          },
+          "key": {
+            "default": "",
+            "type": "string"
+          },
+          "prompts": {
+            "default": [
+              {
+                "command": "",
+                "filter": "",
+                "key": "",
+                "title": "",
+                "type": ""
+              }
+            ],
+            "items": {
+              "properties": {
+                "command": {
+                  "default": "",
+                  "type": "string"
+                },
+                "filter": {
+                  "default": "",
+                  "type": "string"
+                },
+                "key": {
+                  "default": "",
+                  "type": "string"
+                },
+                "title": {
+                  "default": "",
+                  "type": "string"
+                },
+                "type": {
+                  "default": "",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "showOutput": {
+            "default": false,
+            "type": "boolean"
+          },
+          "stream": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "context",
+          "command",
+          "description"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "git": {
+      "properties": {
+        "autoFetch": {
+          "default": true,
+          "type": "boolean"
+        },
+        "autoRefresh": {
+          "default": true,
+          "type": "boolean"
+        },
+        "branchLogCmd": {
+          "default": "git log --graph --color=always --abbrev-commit --decorate --date=relative --pretty=medium {{branchName}} --",
+          "type": "string"
+        },
+        "commit": {
+          "properties": {
+            "autoWrapCommitMessage": {
+              "default": true,
+              "type": "boolean"
+            },
+            "autoWrapWidth": {
+              "default": 72,
+              "type": "integer"
+            },
+            "generateCommand": {
+              "default": "",
+              "type": "string"
+            },
+            "signOff": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "merging": {
+          "properties": {
+            "args": {
+              "default": "",
+              "type": "string"
+            },
+            "manualCommit": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        },
+        "paging": {
+          "properties": {
+            "useConfig": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "gui": {
+      "properties": {
+        "border": {
+          "default": "rounded",
+          "description": "Border style for all panels, or a map of panel name to style",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "borderGradient": {
+          "default": "",
+          "type": "string"
+        },
+        "fileHeaderSeparatorChar": {
+          "default": "─",
+          "type": "string"
+        },
+        "mouseEvents": {
+          "default": true,
+          "type": "boolean"
+        },
+        "nerdFontsVersion": {
+          "default": "3",
+          "type": "string"
+        },
+        "outerFrame": {
+          "default": false,
+          "type": "boolean"
+        },
+        "scrollHeight": {
+          "default": 2,
+          "type": "integer"
+        },
+        "scrollPastBottom": {
+          "default": true,
+          "type": "boolean"
+        },
+        "showBottomLine": {
+          "default": true,
+          "type": "boolean"
+        },
+        "showCommandLog": {
+          "default": true,
+          "type": "boolean"
+        },
+        "showFileTree": {
+          "default": true,
+          "type": "boolean"
+        },
+        "sideBySide": {
+          "default": true,
+          "type": "boolean"
+        },
+        "sidePanelWidth": {
+          "default": 0.3333,
+          "type": "number"
+        },
+        "skipDiscardChangeWarning": {
+          "default": false,
+          "type": "boolean"
+        },
+        "spinner": {
+          "default": [
+            "·",
+            "✻",
+            "✽",
+            "✶",
+            "✳",
+            "✢"
+          ],
+          "items": {
+            "default": "·",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "theme": {
+          "description": "Theme preset name (e.g. `omarchy`, `cockpit`) or a lazygit color map",
+          "oneOf": [
+            {
+              "description": "Theme preset name",
+              "type": "string"
+            },
+            {
+              "properties": {
+                "activeBorderColor": {
+                  "default": [
+                    "green"
+                  ],
+                  "items": {
+                    "default": "green",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "inactiveBorderColor": {
+                  "default": [
+                    "default"
+                  ],
+                  "items": {
+                    "default": "default",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "optionsTextColor": {
+                  "default": [
+                    "blue"
+                  ],
+                  "items": {
+                    "default": "blue",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "preset": {
+                  "description": "Theme preset name",
+                  "type": "string"
+                },
+                "selectedLineBgColor": {
+                  "default": [
+                    "blue"
+                  ],
+                  "items": {
+                    "default": "blue",
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "type": "object"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "keybinding": {
+      "properties": {
+        "branches": {
+          "properties": {
+            "checkoutBranchByName": {
+              "default": "c",
+              "type": "string"
+            },
+            "createPullRequest": {
+              "default": "o",
+              "type": "string"
+            },
+            "fastForward": {
+              "default": "f",
+              "type": "string"
+            },
+            "forceCheckoutBranch": {
+              "default": "F",
+              "type": "string"
+            },
+            "mergeIntoCurrentBranch": {
+              "default": "M",
+              "type": "string"
+            },
+            "rebaseBranch": {
+              "default": "r",
+              "type": "string"
+            },
+            "renameBranch": {
+              "default": "R",
+              "type": "string"
+            },
+            "setUpstream": {
+              "default": "u",
+              "type": "string"
+            },
+            "viewPullRequestOptions": {
+              "default": "O",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "commitMessage": {
+          "properties": {
+            "aiGenerate": {
+              "default": "<c-g>",
+              "type": "string"
+            },
+            "commitMenu": {
+              "default": "<c-o>",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "commits": {
+          "properties": {
+            "amendToCommit": {
+              "default": "A",
+              "type": "string"
+            },
+            "checkoutCommit": {
+              "default": "<space>",
+              "type": "string"
+            },
+            "cherryPickCopy": {
+              "default": "C",
+              "type": "string"
+            },
+            "createFixupCommit": {
+              "default": "F",
+              "type": "string"
+            },
+            "interactiveRebase": {
+              "default": "i",
+              "type": "string"
+            },
+            "markCommitAsFixup": {
+              "default": "<c-f>",
+              "type": "string"
+            },
+            "moveDownCommit": {
+              "default": "<c-j>",
+              "type": "string"
+            },
+            "moveUpCommit": {
+              "default": "<c-k>",
+              "type": "string"
+            },
+            "openLogMenu": {
+              "default": "<c-s>",
+              "type": "string"
+            },
+            "pasteCommits": {
+              "default": "V",
+              "type": "string"
+            },
+            "pickCommit": {
+              "default": "p",
+              "type": "string"
+            },
+            "renameCommit": {
+              "default": "r",
+              "type": "string"
+            },
+            "renameCommitWithEditor": {
+              "default": "R",
+              "type": "string"
+            },
+            "resetCherryPick": {
+              "default": "<c-q>",
+              "type": "string"
+            },
+            "revertCommit": {
+              "default": "t",
+              "type": "string"
+            },
+            "squashAboveCommits": {
+              "default": "S",
+              "type": "string"
+            },
+            "squashDown": {
+              "default": "s",
+              "type": "string"
+            },
+            "tagCommit": {
+              "default": "T",
+              "type": "string"
+            },
+            "viewBisectOptions": {
+              "default": "b",
+              "type": "string"
+            },
+            "viewResetOptions": {
+              "default": "g",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "files": {
+          "properties": {
+            "amendLastCommit": {
+              "default": "A",
+              "type": "string"
+            },
+            "commitChanges": {
+              "default": "c",
+              "type": "string"
+            },
+            "commitChangesWithEditor": {
+              "default": "C",
+              "type": "string"
+            },
+            "commitChangesWithoutHook": {
+              "default": "w",
+              "type": "string"
+            },
+            "fetch": {
+              "default": "f",
+              "type": "string"
+            },
+            "generateAICommit": {
+              "default": "<c-a>",
+              "type": "string"
+            },
+            "ignoreFile": {
+              "default": "i",
+              "type": "string"
+            },
+            "stashAllChanges": {
+              "default": "s",
+              "type": "string"
+            },
+            "toggleStagedAll": {
+              "default": "a",
+              "type": "string"
+            },
+            "toggleTreeView": {
+              "default": "`",
+              "type": "string"
+            },
+            "viewStashOptions": {
+              "default": "S",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "stash": {
+          "properties": {
+            "popStash": {
+              "default": "g",
+              "type": "string"
+            },
+            "renameStash": {
+              "default": "r",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "status": {
+          "properties": {
+            "allBranchesLogGraph": {
+              "default": "a",
+              "type": "string"
+            },
+            "checkForUpdate": {
+              "default": "u",
+              "type": "string"
+            },
+            "recentRepos": {
+              "default": "<enter>",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
+        "universal": {
+          "properties": {
+            "copyToClipboard": {
+              "default": "<c-o>",
+              "type": "string"
+            },
+            "createPatchOptionsMenu": {
+              "default": "<c-p>",
+              "type": "string"
+            },
+            "createRebaseOptionsMenu": {
+              "default": "m",
+              "type": "string"
+            },
+            "customCommandPrompt": {
+              "default": ":",
+              "type": "string"
+            },
+            "diffingMenu": {
+              "default": "W",
+              "type": "string"
+            },
+            "edit": {
+              "default": "e",
+              "type": "string"
+            },
+            "expandSidePanel": {
+              "default": "<a-l>",
+              "type": "string"
+            },
+            "filteringMenu": {
+              "default": "<c-s>",
+              "type": "string"
+            },
+            "gotoBottom": {
+              "default": ">",
+              "type": "string"
+            },
+            "gotoTop": {
+              "default": "<",
+              "type": "string"
+            },
+            "mainPanelFull": {
+              "default": "<a-j>",
+              "type": "string"
+            },
+            "nextBlock": {
+              "default": "<right>",
+              "type": "string"
+            },
+            "nextBlock-alt": {
+              "default": "l",
+              "type": "string"
+            },
+            "nextItem": {
+              "default": "j",
+              "type": "string"
+            },
+            "nextItem-alt": {
+              "default": "<down>",
+              "type": "string"
+            },
+            "nextMatch": {
+              "default": "n",
+              "type": "string"
+            },
+            "nextPage": {
+              "default": "<pgdown>",
+              "type": "string"
+            },
+            "nextScreenMode": {
+              "default": "+",
+              "type": "string"
+            },
+            "openFile": {
+              "default": "o",
+              "type": "string"
+            },
+            "optionMenu": {
+              "default": "x",
+              "type": "string"
+            },
+            "prevBlock": {
+              "default": "<left>",
+              "type": "string"
+            },
+            "prevBlock-alt": {
+              "default": "h",
+              "type": "string"
+            },
+            "prevItem": {
+              "default": "k",
+              "type": "string"
+            },
+            "prevItem-alt": {
+              "default": "<up>",
+              "type": "string"
+            },
+            "prevMatch": {
+              "default": "N",
+              "type": "string"
+            },
+            "prevPage": {
+              "default": "<pgup>",
+              "type": "string"
+            },
+            "prevScreenMode": {
+              "default": "_",
+              "type": "string"
+            },
+            "pullFiles": {
+              "default": "p",
+              "type": "string"
+            },
+            "pushFiles": {
+              "default": "P",
+              "type": "string"
+            },
+            "quickAiNote": {
+              "default": "<c-n>",
+              "type": "string"
+            },
+            "quit": {
+              "default": "q",
+              "type": "string"
+            },
+            "quit-alt1": {
+              "default": "<c-c>",
+              "type": "string"
+            },
+            "quitWithoutChangingDirectory": {
+              "default": "Q",
+              "type": "string"
+            },
+            "redo": {
+              "default": "<c-z>",
+              "type": "string"
+            },
+            "refresh": {
+              "default": "R",
+              "type": "string"
+            },
+            "resetSidePanel": {
+              "default": "<a-r>",
+              "type": "string"
+            },
+            "return": {
+              "default": "<escape>",
+              "type": "string"
+            },
+            "returnToCockpit": {
+              "default": "",
+              "type": "string"
+            },
+            "revertBlock": {
+              "default": "<enter>",
+              "type": "string"
+            },
+            "scrollDownMain": {
+              "default": "<pgdown>",
+              "type": "string"
+            },
+            "scrollDownMain-alt1": {
+              "default": "J",
+              "type": "string"
+            },
+            "scrollLeft": {
+              "default": "H",
+              "type": "string"
+            },
+            "scrollRight": {
+              "default": "L",
+              "type": "string"
+            },
+            "scrollUpMain": {
+              "default": "<pgup>",
+              "type": "string"
+            },
+            "scrollUpMain-alt1": {
+              "default": "K",
+              "type": "string"
+            },
+            "shrinkSidePanel": {
+              "default": "<a-h>",
+              "type": "string"
+            },
+            "sidePanelFull": {
+              "default": "<a-k>",
+              "type": "string"
+            },
+            "startSearch": {
+              "default": "/",
+              "type": "string"
+            },
+            "toggleDiffViewLayout": {
+              "default": "\\",
+              "type": "string"
+            },
+            "togglePanel": {
+              "default": "<tab>",
+              "type": "string"
+            },
+            "togglePanelReverse": {
+              "default": "<backtab>",
+              "type": "string"
+            },
+            "toggleWorkingTreeAndHead": {
+              "default": "<c-g>",
+              "type": "string"
+            },
+            "undo": {
+              "default": "z",
+              "type": "string"
+            },
+            "undoRevertBlock": {
+              "default": "u",
+              "type": "string"
+            }
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "os": {
+      "properties": {
+        "copyToClipboardCmd": {
+          "default": "xclip -selection clipboard",
+          "type": "string"
+        },
+        "edit": {
+          "default": "",
+          "type": "string"
+        },
+        "editAtLine": {
+          "default": "",
+          "type": "string"
+        },
+        "editAtLineAndWait": {
+          "default": "",
+          "type": "string"
+        },
+        "editInTerminal": {},
+        "editPreset": {
+          "default": "",
+          "type": "string"
+        },
+        "open": {
+          "default": "xdg-open {{filename}}",
+          "type": "string"
+        },
+        "openDirInEditor": {
+          "default": "",
+          "type": "string"
+        },
+        "shellFunctionsFile": {
+          "default": "",
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "refresher": {
+      "properties": {
+        "fetchInterval": {
+          "default": 60,
+          "type": "integer"
+        },
+        "refreshInterval": {
+          "default": 10,
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    }
+  },
+  "title": "lazygitrs config.yml",
+  "type": "object"
+}

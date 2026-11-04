@@ -49,6 +49,10 @@ struct Cli {
     #[arg(long)]
     print_keybindings_md: bool,
 
+    /// Print the JSON Schema for config.yml to stdout and exit
+    #[arg(long)]
+    print_config_schema: bool,
+
     /// Configuration file or preset name to use (e.g. 'popup' or ~/.config/lazygitrs/config.yml)
     #[arg(short = 'c', long = "config")]
     config: Option<String>,
@@ -128,6 +132,15 @@ fn main() {
         let config = config::user_config::UserConfig::default();
         let yaml = serde_yaml::to_string(&config).unwrap();
         println!("{}", yaml);
+        std::process::exit(0);
+    }
+
+    if cli.print_config_schema {
+        let schema = config::schema::config_json_schema();
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&schema).unwrap_or_default()
+        );
         std::process::exit(0);
     }
 

@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features & Ergonomics
 
+- JSON Schema for `config.yml` (`_docs/config.schema.json`, `--print-config-schema`, `just gen-schema`) gives editor completion, value types and defaults through the YAML language server. It is generated from the built-in defaults, and a test fails if the committed file is stale
 - Idle refresh is cheaper: a 10 s tick with no working-tree change runs only `git status` (it used to run 6 git commands). Idle git processes went from 21 to 3 per 30 s on this repo
 - `R` in Commits (`commits.renameCommitWithEditor`) rewords the selected commit in your own editor: `git commit --amend` for HEAD, a one-commit `reword` rebase for older commits
 - Add `cockpit` theme: triadic cold-color architecture, zero-background selection (`bg = Reset` + `BOLD`), and a 1-cell cyan `│` selection gutter at `X=1`

@@ -30,6 +30,9 @@ gen-benchmarks:
 gen-keybindings:
     cargo run -- --print-keybindings-md > _docs/KEYBINDINGS.md
 
+gen-schema:
+    cargo run -- --print-config-schema > _docs/config.schema.json
+
 install:
     cargo build --release
     mkdir -p "$HOME/.local/bin"

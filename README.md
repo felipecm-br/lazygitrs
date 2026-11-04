@@ -169,6 +169,14 @@ verified. Nested editor launches avoid terminal capability queries.
 
 Config goes in `~/.config/lazygitrs/config.yml` or `~/.config/lazygit/config.yml` — both work, using either only won't break anything so you can reference the [original lazygit config guide](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md).
 
+**Editor completion:** a JSON Schema for the config ships in [`_docs/config.schema.json`](_docs/config.schema.json) (regenerate with `lazygitrs --print-config-schema`). With the YAML language server, add this line to the top of `config.yml`:
+
+```yaml
+# yaml-language-server: $schema=https://raw.githubusercontent.com/fcmiranda/lazygitrs/main/_docs/config.schema.json
+```
+
+Unknown keys aren't errors in the schema, because the file may be shared with lazygit. lazygitrs reports typos in the command log at startup.
+
 Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/state/lazygitrs/commit_message_history` you won't need to touch this.
 
 **CLI Options:**
