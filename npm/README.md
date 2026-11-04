@@ -172,7 +172,7 @@ Config goes in `~/.config/lazygitrs/config.yml` or `~/.config/lazygit/config.yml
 **Editor completion:** a JSON Schema for the config ships in [`_docs/config.schema.json`](_docs/config.schema.json) (regenerate with `lazygitrs --print-config-schema`). With the YAML language server, add this line to the top of `config.yml`:
 
 ```yaml
-# yaml-language-server: $schema=https://raw.githubusercontent.com/fcmiranda/lazygitrs/main/_docs/config.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/felipecm-br/lazygitrs/main/_docs/config.schema.json
 ```
 
 Unknown keys aren't errors in the schema, because the file may be shared with lazygit. lazygitrs reports typos in the command log at startup.
