@@ -633,63 +633,9 @@ pub fn matches_key(key: KeyEvent, binding: &str) -> bool {
 }
 
 #[cfg(test)]
-mod shadowing_tests {
+mod doc_tests {
+    // Shadowing tests live with the dispatch tables in `gui/keymap.rs`.
     use super::*;
-
-    /// Every string-valued binding in a context section, as (field, key).
-    fn bindings_of<T: Serialize>(section: &T) -> Vec<(String, String)> {
-        let value = serde_json::to_value(section).expect("serialize keybindings");
-        value
-            .as_object()
-            .into_iter()
-            .flatten()
-            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-            .filter(|(_, s)| !s.is_empty())
-            .collect()
-    }
-
-    /// The universal handlers that `Gui::handle_key` runs *before* any
-    /// context controller (they `return` on match). A context default bound
-    /// to the same key can never fire, which is how `files.generateAiCommit`
-    /// on `<c-g>` silently went dead.
-    fn early_universal(kb: &KeybindingConfig) -> Vec<(&'static str, &str)> {
-        vec![
-            (
-                "toggleWorkingTreeAndHead",
-                kb.universal.toggle_working_tree_and_head.as_str(),
-            ),
-            ("quickAiNote", kb.universal.quick_ai_note.as_str()),
-        ]
-    }
-
-    #[test]
-    fn list_context_defaults_are_not_shadowed_by_early_universal_keys() {
-        let kb = KeybindingConfig::default();
-        let contexts: Vec<(&str, Vec<(String, String)>)> = vec![
-            ("files", bindings_of(&kb.files)),
-            ("branches", bindings_of(&kb.branches)),
-            ("commits", bindings_of(&kb.commits)),
-            ("stash", bindings_of(&kb.stash)),
-            ("status", bindings_of(&kb.status)),
-        ];
-        let mut conflicts = Vec::new();
-        for (uname, ukey) in early_universal(&kb) {
-            let Some(u) = parse_key(ukey) else { continue };
-            for (ctx, binds) in &contexts {
-                for (field, key) in binds {
-                    if parse_key(key).is_some_and(|k| matches_key(k, ukey) || k == u) {
-                        conflicts.push(format!(
-                            "{ctx}.{field} = {key} (shadowed by universal.{uname})"
-                        ));
-                    }
-                }
-            }
-        }
-        assert!(
-            conflicts.is_empty(),
-            "dead default bindings: {conflicts:#?}"
-        );
-    }
 
     #[test]
     fn test_generate_keybindings_md() {

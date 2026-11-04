@@ -2,6 +2,7 @@ pub mod context;
 pub mod controller;
 pub mod gradient;
 pub mod input;
+mod keymap;
 pub mod layout;
 pub mod modes;
 pub mod popup;
@@ -1081,6 +1082,16 @@ impl Gui {
                 .push(format!(
                     "[config] Unknown config key(s) ignored: {}",
                     config.user_config.unknown_keys.join(", ")
+                ));
+        }
+        let shadowed = keymap::user_shadowed_bindings(&config.user_config.keybinding);
+        if !shadowed.is_empty() {
+            command_log
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(format!(
+                    "[config] Keybinding(s) that can never fire: {}",
+                    shadowed.join("; ")
                 ));
         }
 
@@ -4336,6 +4347,73 @@ impl Gui {
         false
     }
 
+    /// Number-key window jump. Pressing the parent window's number from a
+    /// sub-context (e.g. CommitFiles) exits the sub-context first.
+    fn jump_to_window_from_key(&mut self, window: SideWindow) {
+        // If we're in a sub-context (CommitFiles), pressing the parent window's
+        // number key should exit the sub-context first.
+        if self.context_mgr.active() == ContextId::CommitFiles && window == SideWindow::Commits {
+            self.context_mgr.set_active(ContextId::Commits);
+            return;
+        }
+        if self.context_mgr.active() == ContextId::StashFiles && window == SideWindow::Stash {
+            self.context_mgr.set_active(ContextId::Stash);
+            return;
+        }
+        if (self.context_mgr.active() == ContextId::BranchCommits
+            || self.context_mgr.active() == ContextId::BranchCommitFiles)
+            && window == SideWindow::Branches
+        {
+            if self.context_mgr.active() == ContextId::BranchCommitFiles {
+                self.context_mgr.set_active(ContextId::BranchCommits);
+            } else {
+                self.context_mgr.set_active(ContextId::Branches);
+            }
+            return;
+        }
+        if self.context_mgr.active() == ContextId::RemoteBranches && window == SideWindow::Branches
+        {
+            self.context_mgr.set_active(ContextId::Remotes);
+            return;
+        }
+        self.context_mgr.jump_to_window(window);
+    }
+
+    fn move_selection_by(&mut self, delta: isize) {
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.context_mgr.move_selection(delta, &model);
+    }
+
+    /// Rebase options key: re-enter the rebase view while rebasing, or show
+    /// the options menu while merging / cherry-picking. Falls through
+    /// (`Ok(false)`) otherwise.
+    fn try_rebase_options_key(&mut self) -> Result<bool> {
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let is_rebasing = model.is_rebasing;
+        let is_merging = model.is_merging;
+        let is_cherry_picking = model.is_cherry_picking;
+        drop(model);
+
+        if is_rebasing {
+            if !self.rebase_mode.active {
+                self.rebase_mode.in_progress_dismissed = false;
+                self.sync_rebase_progress_view();
+            }
+            return Ok(true);
+        }
+        if is_merging || is_cherry_picking {
+            self.show_rebase_options_menu(false, is_merging, is_cherry_picking)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.handle_ai_commit_cancel_key(key) {
             return Ok(());
@@ -4382,393 +4460,21 @@ impl Gui {
         if self.try_handle_panel_resize_key(key) {
             return Ok(());
         }
-        let keybindings = &self.config.user_config.keybinding;
 
         // Inline edit takes priority
         if self.diff_view.inline_edit.is_some() {
             return self.handle_inline_edit_key(key);
         }
 
-        if matches_key(key, &keybindings.universal.custom_command_prompt) {
-            return controller::custom_commands::open_custom_command_prompt(self);
-        }
-
-        if matches_key(key, &keybindings.universal.toggle_diff_view_layout) {
-            self.diff_view.toggle_view_layout();
-            self.persist_diff_view_layout();
+        // Precedence lives in data: see `keymap.rs`.
+        if keymap::dispatch(self, key, keymap::PRE_DIFF_FOCUS)? {
             return Ok(());
-        }
-
-        // When diff panel is focused, handle diff-specific keys
-        // Ctrl-F stays in the same Files/CommitFiles context: grep dialog
-        // over hunk contents (Enter jumps to the file in the current list).
-        if controller::diff_grep::is_diff_grep_key(key)
-            && !self.diff_view.search_active
-            && matches!(
-                self.context_mgr.active(),
-                crate::gui::context::ContextId::Files
-                    | crate::gui::context::ContextId::CommitFiles
-                    | crate::gui::context::ContextId::StashFiles
-                    | crate::gui::context::ContextId::BranchCommitFiles
-            )
-        {
-            return controller::diff_grep::open_diff_grep_picker(self);
         }
         if self.diff_focused {
             return self.handle_diff_focused_key(key);
         }
 
-        // Next/prev search match, or Esc to dismiss search results before considering root quit
-        if !self.search_query.is_empty() {
-            if key.code == KeyCode::Esc {
-                self.search_query.clear();
-                self.search_matches.clear();
-                self.search_match_idx = 0;
-                self.root_esc_armed_at = None;
-                return Ok(());
-            }
-            if matches_key(key, &keybindings.universal.next_match) {
-                self.goto_next_search_match();
-                return Ok(());
-            }
-            if matches_key(key, &keybindings.universal.prev_match) {
-                self.goto_prev_search_match();
-                return Ok(());
-            }
-        }
-
-        if self.is_return_to_cockpit_key(key) {
-            self.quit_reason = QuitReason::ReturnToCockpit;
-            self.should_quit = true;
-            return Ok(());
-        }
-
-        // Global keybindings
-        if matches_key(key, &keybindings.universal.quit)
-            || matches_key(key, &keybindings.universal.quit_alt1)
-        {
-            self.quit_reason = QuitReason::Normal;
-            self.should_quit = true;
-            return Ok(());
-        }
-
-        // Universal return_key (Esc): When at the root files list without sub-contexts:
-        // - In popup / outer_frame mode, a single Esc dismisses immediately.
-        // - In full-screen mode, requires a double-tap within 400ms so unwinding from sub-views
-        //   or tapping Esc once never kills the session unexpectedly.
-        if matches!(self.context_mgr.active(), ContextId::Files)
-            && matches_key(key, &keybindings.universal.return_key)
-        {
-            const ROOT_ESC_DOUBLE_TAP_WINDOW: Duration = Duration::from_millis(400);
-            if self.is_popup
-                || self.outer_frame
-                || self
-                    .root_esc_armed_at
-                    .is_some_and(|t| t.elapsed() <= ROOT_ESC_DOUBLE_TAP_WINDOW)
-            {
-                self.quit_reason = QuitReason::Normal;
-                self.should_quit = true;
-            } else {
-                self.root_esc_armed_at = Some(Instant::now());
-            }
-            return Ok(());
-        }
-
-        // Toggle between Working Tree (Files) and Latest Commit (Commits at HEAD)
-        if matches_key(key, &keybindings.universal.toggle_working_tree_and_head) {
-            self.toggle_working_tree_and_head();
-            return Ok(());
-        }
-
-        // Quick AI Review Note
-        if matches_key(key, &keybindings.universal.quick_ai_note) {
-            self.open_quick_ai_note_prompt();
-            return Ok(());
-        }
-
-        // Number keys 1-5 to jump to window (press again to cycle tabs)
-        if key.modifiers == KeyModifiers::NONE
-            && let KeyCode::Char(c @ '1'..='5') = key.code
-        {
-            let n = c.to_digit(10).unwrap();
-            if let Some(window) = SideWindow::from_number(n) {
-                // If we're in a sub-context (CommitFiles), pressing the parent window's
-                // number key should exit the sub-context first.
-                if self.context_mgr.active() == ContextId::CommitFiles
-                    && window == SideWindow::Commits
-                {
-                    self.context_mgr.set_active(ContextId::Commits);
-                    return Ok(());
-                }
-                if self.context_mgr.active() == ContextId::StashFiles && window == SideWindow::Stash
-                {
-                    self.context_mgr.set_active(ContextId::Stash);
-                    return Ok(());
-                }
-                if (self.context_mgr.active() == ContextId::BranchCommits
-                    || self.context_mgr.active() == ContextId::BranchCommitFiles)
-                    && window == SideWindow::Branches
-                {
-                    if self.context_mgr.active() == ContextId::BranchCommitFiles {
-                        self.context_mgr.set_active(ContextId::BranchCommits);
-                    } else {
-                        self.context_mgr.set_active(ContextId::Branches);
-                    }
-                    return Ok(());
-                }
-                if self.context_mgr.active() == ContextId::RemoteBranches
-                    && window == SideWindow::Branches
-                {
-                    self.context_mgr.set_active(ContextId::Remotes);
-                    return Ok(());
-                }
-                self.context_mgr.jump_to_window(window);
-                return Ok(());
-            }
-        }
-
-        // Tab to switch windows
-        if matches_key(key, &keybindings.universal.toggle_panel) {
-            self.exit_sub_contexts();
-            self.context_mgr.next_window();
-            return Ok(());
-        }
-
-        // Shift+Tab to switch windows in reverse
-        if matches_key(key, &keybindings.universal.toggle_panel_reverse) {
-            self.exit_sub_contexts();
-            self.context_mgr.prev_window();
-            return Ok(());
-        }
-
-        // Arrow keys / h/l to switch windows
-        if matches_key(key, &keybindings.universal.prev_block)
-            || matches_key(key, &keybindings.universal.prev_block_alt)
-        {
-            self.exit_sub_contexts();
-            self.context_mgr.prev_window();
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.next_block)
-            || matches_key(key, &keybindings.universal.next_block_alt)
-        {
-            self.exit_sub_contexts();
-            self.context_mgr.next_window();
-            return Ok(());
-        }
-
-        // Navigation within current panel
-        if matches_key(key, &keybindings.universal.prev_item)
-            || matches_key(key, &keybindings.universal.prev_item_alt)
-        {
-            let model = self
-                .model
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            self.context_mgr.move_selection(-1, &model);
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.next_item)
-            || matches_key(key, &keybindings.universal.next_item_alt)
-        {
-            let model = self
-                .model
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            self.context_mgr.move_selection(1, &model);
-            return Ok(());
-        }
-
-        // Goto top/bottom
-        if matches_key(key, &keybindings.universal.goto_top) {
-            self.context_mgr.set_selection(0);
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.goto_bottom) {
-            let model = self
-                .model
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let len = self.context_mgr.list_len(&model);
-            if len > 0 {
-                self.context_mgr.set_selection(len - 1);
-            }
-            return Ok(());
-        }
-
-        // Main panel scroll (J/K or shift+arrows for diff scrolling)
-        if matches_key(key, &keybindings.universal.scroll_down_main_alt1) {
-            self.diff_view.scroll_down(1);
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.scroll_up_main_alt1) {
-            self.diff_view.scroll_up(1);
-            return Ok(());
-        }
-        if key.code == KeyCode::PageDown {
-            self.diff_view.scroll_down(20);
-            return Ok(());
-        }
-        if key.code == KeyCode::PageUp {
-            self.diff_view.scroll_up(20);
-            return Ok(());
-        }
-
-        // Horizontal scroll (H/L)
-        if matches_key(key, &keybindings.universal.scroll_left) {
-            self.diff_view.scroll_left(4);
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.scroll_right) {
-            self.diff_view.scroll_right(4);
-            return Ok(());
-        }
-
-        // Next/prev hunk with { and }
-        if key.code == KeyCode::Char('{') {
-            if self.context_mgr.active() == ContextId::Files {
-                self.diff_view.cycle_prev_revert_hunk();
-            } else {
-                self.diff_view.prev_hunk();
-            }
-            return Ok(());
-        }
-        if key.code == KeyCode::Char('}') {
-            if self.context_mgr.active() == ContextId::Files {
-                self.diff_view.cycle_next_revert_hunk();
-            } else {
-                self.diff_view.next_hunk();
-            }
-            return Ok(());
-        }
-
-        // Refresh
-        if matches_key(key, &keybindings.universal.refresh) {
-            self.needs_refresh = true;
-            return Ok(());
-        }
-
-        // Rebase options menu (global — when rebasing/merging)
-        if matches_key(key, &keybindings.universal.create_rebase_options_menu) {
-            let model = self
-                .model
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            let is_rebasing = model.is_rebasing;
-            let is_merging = model.is_merging;
-            let is_cherry_picking = model.is_cherry_picking;
-            drop(model);
-
-            // If rebasing, re-enter the interactive rebase view
-            if is_rebasing {
-                if !self.rebase_mode.active {
-                    self.rebase_mode.in_progress_dismissed = false;
-                    self.sync_rebase_progress_view();
-                }
-                return Ok(());
-            }
-
-            if is_merging || is_cherry_picking {
-                return self.show_rebase_options_menu(false, is_merging, is_cherry_picking);
-            }
-        }
-
-        // Push/Pull (global)
-        if self.try_handle_global_repo_keys(key)? {
-            return Ok(());
-        }
-        let keybindings = &self.config.user_config.keybinding;
-
-        // Screen mode toggle (+ to enlarge, _ to shrink, matching lazygit)
-        if matches_key(key, &keybindings.universal.next_screen_mode) {
-            self.next_screen_mode();
-            return Ok(());
-        }
-        if matches_key(key, &keybindings.universal.prev_screen_mode) {
-            self.prev_screen_mode();
-            return Ok(());
-        }
-
-        // Diff/Compare mode (W)
-        if key.code == KeyCode::Char('W') {
-            self.diff_mode.enter(self.show_file_tree);
-            self.clear_diff_view();
-            return Ok(());
-        }
-
-        // Toggle command log (;)
-        if key.code == KeyCode::Char(';') {
-            self.show_command_log = !self.show_command_log;
-            self.persist_command_log_visibility();
-            return Ok(());
-        }
-
-        // Undo (z)
-        if matches_key(key, &keybindings.universal.undo) {
-            return self.undo();
-        }
-
-        // Redo (ctrl-z)
-        if matches_key(key, &keybindings.universal.redo) {
-            return self.redo();
-        }
-
-        // Patch building mode (<c-p>)
-        if matches_key(key, &keybindings.universal.create_patch_options_menu)
-            && (self.context_mgr.active() == ContextId::Commits || self.patch_building.active)
-        {
-            return controller::patch_building::show_patch_menu(self);
-        }
-
-        // Help popup (?)
-        if key.code == KeyCode::Char('?') {
-            self.show_command_palette();
-            return Ok(());
-        }
-
-        // Start search
-        if matches_key(key, &keybindings.universal.start_search) {
-            self.search_active = true;
-            self.search_query.clear();
-            self.search_matches.clear();
-            self.search_match_idx = 0;
-            let mut ta = ratatui_textarea::TextArea::default();
-            ta.set_cursor_line_style(ratatui::style::Style::default());
-            self.search_textarea = Some(ta);
-            return Ok(());
-        }
-
-        // Universal "I" key: interactive rebase picker
-        // SHIFT alone is accepted because terminals report uppercase letters that way.
-        // Modes that already claim keys (rebase/diff/search/popups) return earlier, so
-        // these only fire in normal views.
-        if plain_char_key(key, 'I') {
-            self.show_interactive_rebase_picker();
-            return Ok(());
-        }
-
-        // Universal "G" key: global reset picker (lazygit `universal.viewResetOptions`).
-        // Opens a searchable branch/commit picker, then soft/mixed/hard options.
-        // Lowercase `g` remains contextual (commits.viewResetOptions) and is handled
-        // by per-context controllers — plain_char_key only matches uppercase G.
-        if plain_char_key(key, 'G') {
-            self.show_reset_picker();
-            return Ok(());
-        }
-
-        // `.` toggles the commit-details box when in any commit-related
-        // context.  Kept outside per-context controllers so the binding is
-        // consistent across Commits / BranchCommits / Reflog / CommitFiles.
-        if key.code == KeyCode::Char('.')
-            && self.context_has_commit_details()
-            && !(self.show_commit_file_tree
-                && matches!(
-                    self.context_mgr.active(),
-                    ContextId::CommitFiles | ContextId::BranchCommitFiles | ContextId::StashFiles
-                ))
-        {
-            self.show_commit_details = !self.show_commit_details;
-            self.persist_commit_details_visibility();
+        if keymap::dispatch(self, key, keymap::NORMAL)? {
             return Ok(());
         }
 
