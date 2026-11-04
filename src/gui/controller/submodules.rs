@@ -49,9 +49,12 @@ fn update_submodule(gui: &mut Gui) -> Result<()> {
         gui.popup = PopupState::Confirm {
             title: "Update submodule".to_string(),
             message: format!("Update submodule '{}'?", path),
+            // Network I/O (fetch/clone): run off the UI thread with a spinner;
+            // completion refreshes and errors surface via the remote-op path.
             on_confirm: Box::new(move |gui| {
-                gui.git.update_submodule(&path)?;
-                gui.needs_refresh = true;
+                gui.start_remote_op("Updating submodule", "", move |git| {
+                    git.update_submodule(&path)
+                });
                 Ok(())
             }),
         };
@@ -65,9 +68,12 @@ fn add_submodule(gui: &mut Gui) -> Result<()> {
         textarea: make_textarea("https://github.com/user/repo path"),
         on_confirm: Box::new(|gui, input| {
             let parts: Vec<&str> = input.split_whitespace().collect();
+            // Clones over the network: background op, not the UI thread.
             if parts.len() >= 2 {
-                gui.git.add_submodule(parts[0], parts[1])?;
-                gui.needs_refresh = true;
+                let (url, path) = (parts[0].to_string(), parts[1].to_string());
+                gui.start_remote_op("Adding submodule", "", move |git| {
+                    git.add_submodule(&url, &path)
+                });
             } else if parts.len() == 1 {
                 // Derive path from URL
                 let url = parts[0];
@@ -76,8 +82,10 @@ fn add_submodule(gui: &mut Gui) -> Result<()> {
                     .next()
                     .unwrap_or("submodule")
                     .trim_end_matches(".git");
-                gui.git.add_submodule(url, path)?;
-                gui.needs_refresh = true;
+                let (url, path) = (url.to_string(), path.to_string());
+                gui.start_remote_op("Adding submodule", "", move |git| {
+                    git.add_submodule(&url, &path)
+                });
             }
             Ok(())
         }),
@@ -144,8 +152,7 @@ fn update_all_submodules(gui: &mut Gui) -> Result<()> {
         title: "Update submodules".to_string(),
         message: "Update all submodules?".to_string(),
         on_confirm: Box::new(|gui| {
-            gui.git.update_submodules()?;
-            gui.needs_refresh = true;
+            gui.start_remote_op("Updating submodules", "", |git| git.update_submodules());
             Ok(())
         }),
     };
