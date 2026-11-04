@@ -22,6 +22,18 @@ pub(super) fn global_picker_ref() -> Option<&'static Picker> {
 /// Detect capabilities once, before the TUI input reader starts. Only the
 /// first call probes; later calls are no-ops. Never touches stdin/stdout,
 /// never mutates tmux settings.
+/// A picker for a known cell size, with no terminal query.
+///
+/// `Picker::from_fontsize` is deprecated in favour of `from_query_stdio`, but
+/// that replacement *queries the terminal*, which is exactly what nested
+/// launches (Helix `:insert-output`) and env-hinted protocols must avoid —
+/// probing races the parent's tty reader. `halfblocks()` cannot set a font
+/// size. Keep the deprecated constructor, contained here.
+#[allow(deprecated)]
+pub(super) fn picker_for_font_size(font: (u16, u16)) -> Picker {
+    Picker::from_fontsize(font.into())
+}
+
 pub fn initialize() {
     if GLOBAL_PICKER.get().is_some() {
         return;
@@ -330,7 +342,7 @@ fn detect_picker() -> Option<Picker> {
             // No terminal query under nested launches; hints + ioctl only.
             if experimental && iterm2_hint_from_env() {
                 let fs = winsize_font?;
-                let mut p = Picker::from_fontsize(fs.into());
+                let mut p = picker_for_font_size(fs);
                 p.set_protocol_type(ProtocolType::Iterm2);
                 return Some(p);
             }
@@ -339,7 +351,7 @@ fn detect_picker() -> Option<Picker> {
                 if fs.0 == 0 || fs.1 == 0 {
                     return None;
                 }
-                let mut p = Picker::from_fontsize(fs.into());
+                let mut p = picker_for_font_size(fs);
                 p.set_protocol_type(ProtocolType::Kitty);
                 return Some(p);
             }
@@ -397,7 +409,7 @@ fn detect_picker() -> Option<Picker> {
             return None;
         }
 
-        let mut picker = Picker::from_fontsize(font.into());
+        let mut picker = picker_for_font_size(font);
         picker.set_protocol_type(proto);
         if picker.protocol_type() == ProtocolType::Halfblocks {
             return None;

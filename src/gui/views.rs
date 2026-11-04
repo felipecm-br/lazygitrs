@@ -1323,7 +1323,7 @@ fn clamped_popup_height(line_count: usize, fixed_rows: u16, area_height: u16) ->
 }
 
 fn centered_popup_x_width(area: Rect) -> (u16, u16) {
-    let popup_width = (area.width * 60 / 100).min(60).max(30).min(area.width);
+    let popup_width = (area.width * 60 / 100).clamp(30, 60).min(area.width);
     let x = (area.width.saturating_sub(popup_width)) / 2;
     (x, popup_width)
 }
@@ -2816,7 +2816,7 @@ pub fn commit_ai_button_geometry(popup: &PopupState, area: Rect) -> Option<Rect>
     if area.width < 10 || area.height < 6 {
         return None;
     }
-    let popup_width = (area.width * 60 / 100).min(60).max(30).min(area.width);
+    let popup_width = (area.width * 60 / 100).clamp(30, 60).min(area.width);
     if popup_width < 16 {
         return None;
     }
@@ -2849,7 +2849,7 @@ pub fn commit_description_textarea_geometry(popup: &PopupState, area: Rect) -> O
         return None;
     };
 
-    let popup_width = (area.width * 60 / 100).min(60).max(30).min(area.width);
+    let popup_width = (area.width * 60 / 100).clamp(30, 60).min(area.width);
     let ta_height = 16u16.min(area.height);
     let ta_y = (area.height.saturating_sub(ta_height)) / 2;
     let ta_rect = Rect::new(
@@ -2873,7 +2873,7 @@ pub fn commit_description_textarea_geometry(popup: &PopupState, area: Rect) -> O
 
 /// Tooltip rect placed one row above the popup, right-aligned with the button.
 fn commit_ai_tooltip_rect(area: Rect, btn_rect: Rect, tip_w: u16) -> Rect {
-    let popup_width = (area.width * 60 / 100).min(60).max(30).min(area.width);
+    let popup_width = (area.width * 60 / 100).clamp(30, 60).min(area.width);
     let x = (area.width.saturating_sub(popup_width)) / 2;
     let ta_height: u16 = 16u16.min(area.height);
     let ta_y = (area.height.saturating_sub(ta_height)) / 2;
@@ -2975,7 +2975,7 @@ pub fn render_popup(
     if area.width < 4 || area.height < 4 {
         return;
     }
-    let popup_width = (area.width * 60 / 100).min(60).max(30).min(area.width);
+    let popup_width = (area.width * 60 / 100).clamp(30, 60).min(area.width);
     let x = (area.width.saturating_sub(popup_width)) / 2;
 
     match popup {
@@ -3579,7 +3579,7 @@ pub fn render_popup(
             }
 
             // Sizing: use more of the screen for help
-            let popup_width = (area.width * 70 / 100).min(72).max(36).min(area.width);
+            let popup_width = (area.width * 70 / 100).clamp(36, 72).min(area.width);
             let content_height = display.len().max(1);
             // search bar (1) + separator (1) + content + hint (1) + borders (2)
             let popup_height = (content_height as u16 + 5)
@@ -4774,7 +4774,7 @@ mod tests {
         // height = 3 items + 2 borders = 5; y = (24-5)/2 = 9; list starts at y+1 = 10
         let x = (area
             .width
-            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
+            .saturating_sub((area.width * 60 / 100).clamp(30, 60)))
             / 2
             + 2;
         assert_eq!(menu_item_at(&popup, area, x, 10), Some(0));
@@ -4809,7 +4809,7 @@ mod tests {
         // height = max(8, 2+6)=8; y=(30-8)/2=11; list_start=y+1+2=14
         let x = (area
             .width
-            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
+            .saturating_sub((area.width * 60 / 100).clamp(30, 60)))
             / 2
             + 2;
         assert_eq!(checklist_item_at(&popup, area, x, 14), Some(0));

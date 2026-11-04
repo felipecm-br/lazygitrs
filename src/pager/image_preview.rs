@@ -541,7 +541,7 @@ impl InlineImagePreview {
 
     #[cfg(test)]
     pub(crate) fn from_preview_for_test(preview: ImagePreview) -> Self {
-        let mut picker = Picker::from_fontsize((8, 16).into());
+        let mut picker = capabilities::picker_for_font_size((8, 16));
         picker.set_protocol_type(ProtocolType::Kitty);
         let mut inline = Self::with_picker(
             Path::new("."),
@@ -661,13 +661,13 @@ mod tests {
     use std::path::PathBuf;
 
     fn halfblocks_picker() -> Picker {
-        let mut p = Picker::from_fontsize((8, 16).into());
+        let mut p = capabilities::picker_for_font_size((8, 16));
         p.set_protocol_type(ProtocolType::Halfblocks);
         p
     }
 
     fn graphics_picker() -> Picker {
-        let mut p = Picker::from_fontsize((8, 16).into());
+        let mut p = capabilities::picker_for_font_size((8, 16));
         p.set_protocol_type(ProtocolType::Kitty);
         p
     }
@@ -969,7 +969,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     fn iterm2_picker() -> Picker {
-        let mut p = Picker::from_fontsize((8, 16).into());
+        let mut p = capabilities::picker_for_font_size((8, 16));
         p.set_protocol_type(ProtocolType::Iterm2);
         p
     }

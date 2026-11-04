@@ -7,7 +7,7 @@ pub mod word_diff;
 
 use serde::{Deserialize, Serialize};
 
-/// Types shared across the pager module.
+// Types shared across the pager module.
 
 /// Represents a single line in a side-by-side diff.
 #[derive(Debug, Clone)]

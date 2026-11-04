@@ -110,7 +110,7 @@ fn handle_list_picker_mouse(
         MouseEventKind::Down(MouseButton::Left) => {
             // Click to select an item in the list picker
             let area = ratatui::layout::Rect::new(0, 0, layout_width, layout_height);
-            let popup_width = (area.width * 60 / 100).min(60).max(30);
+            let popup_width = (area.width * 60 / 100).clamp(30, 60);
             let max_popup = (area.height * 60 / 100).max(10);
             let popup_height = max_popup.min(area.height.saturating_sub(4));
             let x = (area.width.saturating_sub(popup_width)) / 2;
@@ -2120,7 +2120,7 @@ impl Gui {
         let w = self.layout.width;
         // Re-flow any active commit-message textarea to the new width so
         // wrapping stays consistent with what the user sees.
-        let popup_width = (w * 60 / 100).min(60).max(30).min(w);
+        let popup_width = (w * 60 / 100).clamp(30, 60).min(w);
         let popup_inner = popup_width.saturating_sub(4) as usize;
         let config_width = self.config.user_config.git.commit.auto_wrap_width;
         let effective_width = if config_width > 0 {
@@ -2738,7 +2738,7 @@ impl Gui {
 
             match result.result {
                 Ok(Some(message)) => {
-                    let popup_width = (self.layout.width * 60 / 100).min(60).max(30);
+                    let popup_width = (self.layout.width * 60 / 100).clamp(30, 60);
                     let popup_inner = popup_width.saturating_sub(4) as usize;
                     let config_width = self.config.user_config.git.commit.auto_wrap_width;
                     let wrap = if config_width > 0 {
@@ -5418,8 +5418,7 @@ impl Gui {
             return;
         }
         let popup_width = (self.layout.width * 60 / 100)
-            .min(60)
-            .max(30)
+            .clamp(30, 60)
             .min(self.layout.width);
         let popup_inner = popup_width.saturating_sub(4) as usize;
         let config_width = self.config.user_config.git.commit.auto_wrap_width;
@@ -5807,8 +5806,7 @@ impl Gui {
                     {
                         textarea_input(textarea, key);
                         let popup_width = (self.layout.width * 60 / 100)
-                            .min(60)
-                            .max(30)
+                            .clamp(30, 60)
                             .min(self.layout.width);
                         let popup_inner = popup_width.saturating_sub(4) as usize;
                         if *is_commit {
@@ -5858,8 +5856,7 @@ impl Gui {
                     if let PopupState::HunkCommentary { textarea, .. } = &mut self.popup {
                         textarea_input(textarea, key);
                         let popup_width = (self.layout.width * 60 / 100)
-                            .min(60)
-                            .max(30)
+                            .clamp(30, 60)
                             .min(self.layout.width);
                         let popup_inner = popup_width.saturating_sub(4) as usize;
                         if popup_inner > 0 {
@@ -8237,7 +8234,7 @@ impl Gui {
                     // Click to select an entry in the help list
                     let area =
                         ratatui::layout::Rect::new(0, 0, self.layout.width, self.layout.height);
-                    let popup_width = (area.width * 70 / 100).min(72).max(36);
+                    let popup_width = (area.width * 70 / 100).clamp(36, 72);
                     let content_height = total_rows.max(1);
                     let popup_height = (content_height as u16 + 5)
                         .min(area.height.saturating_sub(4))
@@ -9212,8 +9209,7 @@ impl Gui {
     fn handle_mouse_click(&mut self, col: u16, row: u16) {
         if let PopupState::HunkCommentary { .. } = &self.popup {
             let popup_width = (self.layout.width * 60 / 100)
-                .min(60)
-                .max(30)
+                .clamp(30, 60)
                 .min(self.layout.width);
             let ta_height = 16u16.min(self.layout.height);
             if ta_height >= 3 && popup_width >= 3 {
@@ -9755,12 +9751,11 @@ impl Gui {
                         closest = Some((note, dist));
                     }
                     Some((prev_note, prev_dist)) => {
-                        if dist < prev_dist {
-                            closest = Some((note, dist));
-                        } else if dist == prev_dist
+                        // Nearer wins; on a tie prefer the deleted note's panel.
+                        let same_panel_tiebreak = dist == prev_dist
                             && note.panel == deleted.panel
-                            && prev_note.panel != deleted.panel
-                        {
+                            && prev_note.panel != deleted.panel;
+                        if dist < prev_dist || same_panel_tiebreak {
                             closest = Some((note, dist));
                         }
                     }
@@ -10603,7 +10598,7 @@ impl Gui {
                     (anchor, s.old, s.new)
                 })
                 .collect();
-        matched.sort_by(|a, b| b.0.cmp(&a.0));
+        matched.sort_by_key(|m| std::cmp::Reverse(m.0));
         matched
             .into_iter()
             .map(|(_, old, new)| (old, new))
@@ -11126,8 +11121,7 @@ impl Gui {
     /// geometry and the user's `git.commit.auto_wrap_width` config.
     fn commit_body_wrap_width(&self) -> usize {
         let popup_width = (self.layout.width * 60 / 100)
-            .min(60)
-            .max(30)
+            .clamp(30, 60)
             .min(self.layout.width.max(1));
         let popup_inner = popup_width.saturating_sub(4) as usize;
         let config_width = self.config.user_config.git.commit.auto_wrap_width;

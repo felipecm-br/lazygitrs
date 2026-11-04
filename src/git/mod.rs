@@ -583,7 +583,7 @@ mod tests {
             assert_eq!(commits[1].author_name, "Test");
             assert_eq!(commits[1].author_email, "test@example.com");
             assert!(commits[1].unix_timestamp > 0);
-            assert_eq!(commits[1].parents, [root.clone()]);
+            assert_eq!(commits[1].parents, std::slice::from_ref(&root));
             assert_eq!(commits[0].tags, ["tip"]);
             assert!(commits[0].refs.iter().any(|r| r.contains("feature")));
         }

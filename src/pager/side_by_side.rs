@@ -4417,10 +4417,10 @@ fn parse_unified_diff(diff: &str) -> (String, String) {
             continue;
         }
 
-        if line.starts_with('-') {
-            old_lines.push(&line[1..]);
-        } else if line.starts_with('+') {
-            new_lines.push(&line[1..]);
+        if let Some(old) = line.strip_prefix('-') {
+            old_lines.push(old);
+        } else if let Some(new) = line.strip_prefix('+') {
+            new_lines.push(new);
         } else if let Some(ctx) = line.strip_prefix(' ') {
             old_lines.push(ctx);
             new_lines.push(ctx);
@@ -5352,7 +5352,7 @@ mod tests {
         let buffer = terminal.backend().buffer();
         // The right border column is at x = 39. Rows 1..=8 are the inner border cells.
         let right_border: Vec<String> = (1..9)
-            .map(|y| buffer.get(39, y).symbol().to_string())
+            .map(|y| buffer[(39, y)].symbol().to_string())
             .collect();
 
         // There should be at least one '▐' (Right Half Block) scrollbar character rendered on the right border
@@ -5512,11 +5512,7 @@ mod tests {
                 assert_eq!(line.section_index, binary_section);
                 // Scroll into the middle of the image block: sticky pins header,
                 // next file stays aligned and text hunks still resolve.
-                state.scroll_offset = if layout == DiffViewLayout::Unified {
-                    3
-                } else {
-                    3
-                };
+                state.scroll_offset = 3;
                 let buf = render_preview(&mut state, 80, 10);
                 assert!(buffer_row(&buf, 1).contains("foo.png"));
                 // No text row is mistaken for an image row.

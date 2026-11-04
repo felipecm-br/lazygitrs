@@ -39,7 +39,7 @@ pub fn new_command_log() -> CommandLog {
     Arc::new(Mutex::new(Vec::new()))
 }
 
-/// Thread-local command log reference.
+// Thread-local command log reference.
 thread_local! {
     static CMD_LOG: std::cell::RefCell<Option<CommandLog>> = const { std::cell::RefCell::new(None) };
 }

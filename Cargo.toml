@@ -57,6 +57,18 @@ async-stream = "0.3"
 libc = "0.2"
 strip-ansi-escapes = "0.2"
 
+# Lint policy (see _docs/AUDIT-2026-11.md, P2-2). These are structural style
+# lints whose fixes belong to the Phase 5 refactor (Gui god-object, render fns
+# with many params), not to drive-by edits of upstream-owned code.
+[lints.clippy]
+too_many_arguments = "allow"
+type_complexity = "allow"
+large_enum_variant = "allow"
+needless_range_loop = "allow"
+field_reassign_with_default = "allow"
+# Spelled-out case lists read better than the "simplified" form.
+nonminimal_bool = "allow"
+
 [profile.release]
 lto = true
 codegen-units = 1

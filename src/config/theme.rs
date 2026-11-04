@@ -223,7 +223,7 @@ impl Theme {
                 ratatui::widgets::BorderType::Plain,
                 ratatui::widgets::Borders::NONE,
             ),
-            "rounded" | _ => (
+            _ => (
                 ratatui::widgets::BorderType::Rounded,
                 ratatui::widgets::Borders::ALL,
             ),
