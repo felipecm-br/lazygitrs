@@ -4219,19 +4219,13 @@ impl Gui {
         }
 
         // Toggle between Working Tree (Files) and Latest Commit (Commits at HEAD)
-        if matches_key(key, &keybindings.universal.toggle_working_tree_and_head)
-            || (key.modifiers == KeyModifiers::CONTROL
-                && (key.code == KeyCode::Char('g') || key.code == KeyCode::Char('G')))
-        {
+        if matches_key(key, &keybindings.universal.toggle_working_tree_and_head) {
             self.toggle_working_tree_and_head();
             return Ok(());
         }
 
         // Quick AI Review Note
-        if matches_key(key, &keybindings.universal.quick_ai_note)
-            || (key.modifiers == KeyModifiers::CONTROL
-                && (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N')))
-        {
+        if matches_key(key, &keybindings.universal.quick_ai_note) {
             self.open_quick_ai_note_prompt();
             return Ok(());
         }
@@ -4897,19 +4891,13 @@ impl Gui {
         let keybindings = &self.config.user_config.keybinding;
 
         // Toggle between Working Tree (Files) and Latest Commit (Commits at HEAD)
-        if matches_key(key, &keybindings.universal.toggle_working_tree_and_head)
-            || (key.modifiers == KeyModifiers::CONTROL
-                && (key.code == KeyCode::Char('g') || key.code == KeyCode::Char('G')))
-        {
+        if matches_key(key, &keybindings.universal.toggle_working_tree_and_head) {
             self.toggle_working_tree_and_head();
             return Ok(());
         }
 
         // Quick AI Review Note
-        if matches_key(key, &keybindings.universal.quick_ai_note)
-            || (key.modifiers == KeyModifiers::CONTROL
-                && (key.code == KeyCode::Char('n') || key.code == KeyCode::Char('N')))
-        {
+        if matches_key(key, &keybindings.universal.quick_ai_note) {
             self.open_quick_ai_note_prompt();
             return Ok(());
         }

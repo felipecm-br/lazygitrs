@@ -3148,6 +3148,7 @@ fn render_status_bar(
     let mut emphasized: Vec<&str> = Vec::new();
     let open_log_menu_key = format_key_hint(&keybindings.commits.open_log_menu);
     let toggle_head_key = format_key_hint(&keybindings.universal.toggle_working_tree_and_head);
+    let ai_commit_key = format_key_hint(&keybindings.files.generate_ai_commit);
     let return_to_cockpit_key = if !keybindings.universal.return_to_cockpit.is_empty() {
         Some(format_key_hint(&keybindings.universal.return_to_cockpit))
     } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
@@ -3226,8 +3227,11 @@ fn render_status_bar(
                 if !toggle_head_key.is_empty() {
                     hints.push((toggle_head_key.as_str(), "head"));
                 }
+                hints.push(("c", "commit"));
+                if !ai_commit_key.is_empty() {
+                    hints.push((ai_commit_key.as_str(), "ai commit"));
+                }
                 hints.extend([
-                    ("c", "commit"),
                     ("a", "stage all"),
                     ("<c-n>", "agent note"),
                     ("space", "toggle"),
