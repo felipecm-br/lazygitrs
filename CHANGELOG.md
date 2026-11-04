@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Breaking
+
+- `files.generateAICommit` now defaults to `<c-a>`. The old `<c-g>` default never fired because the universal Files/HEAD toggle consumed it first; set it explicitly to keep a custom key
+- The `:` / custom command runner no longer sources `~/.dotfiles/main/git/.zsh/packages/git.zsh` for everyone; set `os.shellFunctionsFile` to load an aliases/functions file (same key as lazygit)
+
+### Bug Fixes
+
+- `Ctrl+G` / `Ctrl+N` are no longer hardcoded alongside `toggleWorkingTreeAndHead` / `quickAiNote`, so remapping them frees the keys
+- Files status bar shows the AI commit key
+
+### CI
+
+- New CI workflow: `fmt --check`, `test --locked`, `cargo deny` advisories, clippy (non-blocking)
+- Release: build `x86_64-apple-darwin` on `macos-latest` (the `macos-13` image is retired)
+- Declare `rust-version = "1.90"`
+
 ### Security
 
 - AI-notes HTTP API rejects non-loopback `Host` headers (`403`) and non-JSON `POST` bodies (`415`), closing CSRF and DNS-rebinding paths to `notifyCommand`
