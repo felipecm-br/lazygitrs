@@ -44,6 +44,8 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-targets --locked -- -D warnings
+      # The slim build (no tree-sitter grammars) must keep compiling cleanly.
+      - run: cargo clippy --all-targets --locked --no-default-features -- -D warnings
 
   advisories:
     runs-on: ubuntu-latest

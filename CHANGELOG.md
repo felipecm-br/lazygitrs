@@ -22,6 +22,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features & Ergonomics
 
+- `syntax-highlight` cargo feature (on by default). `cargo install --no-default-features` or `just install-slim` builds without the tree-sitter grammars: 7.0 MB instead of 15.3 MB, with diffs uncoloured
 - JSON Schema for `config.yml` (`_docs/config.schema.json`, `--print-config-schema`, `just gen-schema`) gives editor completion, value types and defaults through the YAML language server. It is generated from the built-in defaults, and a test fails if the committed file is stale
 - Idle refresh is cheaper: a 10 s tick with no working-tree change runs only `git status` (it used to run 6 git commands). Idle git processes went from 21 to 3 per 30 s on this repo
 - `R` in Commits (`commits.renameCommitWithEditor`) rewords the selected commit in your own editor: `git commit --amend` for HEAD, a one-commit `reword` rebase for older commits

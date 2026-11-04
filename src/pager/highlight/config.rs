@@ -1,6 +1,9 @@
+#[cfg(feature = "syntax-highlight")]
 use std::sync::LazyLock;
+#[cfg(feature = "syntax-highlight")]
 use tree_sitter_highlight::HighlightConfiguration;
 
+#[cfg(feature = "syntax-highlight")]
 use super::queries::*;
 
 pub const HIGHLIGHT_NAMES: &[&str] = &[
@@ -33,10 +36,12 @@ pub const HIGHLIGHT_NAMES: &[&str] = &[
     "variable.member",
 ];
 
+#[cfg(feature = "syntax-highlight")]
 pub struct LanguageConfig {
     pub config: HighlightConfiguration,
 }
 
+#[cfg(feature = "syntax-highlight")]
 fn load_config(
     language: tree_sitter::Language,
     name: &str,
@@ -56,6 +61,7 @@ fn load_config(
     }
 }
 
+#[cfg(feature = "syntax-highlight")]
 pub static CONFIGS: LazyLock<Vec<(&'static str, LanguageConfig)>> = LazyLock::new(|| {
     let mut configs = Vec::new();
 

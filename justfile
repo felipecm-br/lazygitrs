@@ -78,3 +78,7 @@ dist version:
     @echo "Artifacts generated in dist/:"
     @ls -lh dist/
 
+
+# Smaller binary without tree-sitter grammars (diffs render uncoloured).
+install-slim:
+    cargo install --path . --no-default-features

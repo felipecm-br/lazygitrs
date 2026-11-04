@@ -1,15 +1,20 @@
 mod config;
+#[cfg(feature = "syntax-highlight")]
 mod queries;
 
 use std::collections::HashMap;
+#[cfg(feature = "syntax-highlight")]
 use std::path::Path;
 
 use ratatui::prelude::*;
+#[cfg(feature = "syntax-highlight")]
 use tree_sitter_highlight::{HighlightEvent, Highlighter};
 
 use crate::config::Theme;
 
-use config::{CONFIGS, HIGHLIGHT_NAMES, LanguageConfig};
+use config::HIGHLIGHT_NAMES;
+#[cfg(feature = "syntax-highlight")]
+use config::{CONFIGS, LanguageConfig};
 
 /// Map a highlight index to a ratatui Color using the active theme.
 pub fn highlight_color(index: usize, theme: &Theme) -> Color {
@@ -35,6 +40,7 @@ pub fn highlight_color(index: usize, theme: &Theme) -> Color {
     }
 }
 
+#[cfg(feature = "syntax-highlight")]
 fn get_config_for_file(filename: &str) -> Option<&'static LanguageConfig> {
     let ext = Path::new(filename).extension().and_then(|e| e.to_str())?;
     CONFIGS.iter().find(|(e, _)| *e == ext).map(|(_, c)| c)
@@ -44,6 +50,7 @@ fn get_config_for_file(filename: &str) -> Option<&'static LanguageConfig> {
 /// They live in a lazy static, so without this the first diff ever rendered
 /// pays the whole cost on its critical path.
 pub fn warm_configs() {
+    #[cfg(feature = "syntax-highlight")]
     std::sync::LazyLock::force(&CONFIGS);
 }
 
@@ -55,6 +62,14 @@ pub struct FileHighlighter {
 }
 
 impl FileHighlighter {
+    /// Built without the `syntax-highlight` feature: no grammars, so every
+    /// file renders like an unknown extension (plain text).
+    #[cfg(not(feature = "syntax-highlight"))]
+    pub fn new(_content: &str, _filename: &str) -> Self {
+        Self::default()
+    }
+
+    #[cfg(feature = "syntax-highlight")]
     pub fn new(content: &str, filename: &str) -> Self {
         let Some(lang_config) = get_config_for_file(filename) else {
             return Self::default();
