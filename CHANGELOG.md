@@ -13,6 +13,14 @@ All notable changes to this project will be documented in this file.
 
 - `Ctrl+G` / `Ctrl+N` are no longer hardcoded alongside `toggleWorkingTreeAndHead` / `quickAiNote`, so remapping them frees the keys
 - Files status bar shows the AI commit key
+- Full-screen mode no longer quits on a single accidental `Esc` at the root Files panel (requires a double-tap within 400ms in full-screen mode, while `--popup` and `outerFrame` modes still dismiss on single `Esc`; pressing `Esc` with an active `/` search filter clears the filter first)
+
+### Features & Ergonomics
+
+- Add `cockpit` theme: triadic cold-color architecture, zero-background selection (`bg = Reset` + `BOLD`), and a 1-cell cyan `│` selection gutter at `X=1`
+- Add `omarchy` dynamic theme (`gui.theme: omarchy` or via the theme picker): reads `~/.local/state/omarchy/current/theme/colors.toml` (or `OMARCHY_COLORS_PATH`)
+- Status bar overhaul: uniform accent key styling, dimmed `│` separators, unambiguous key labels (`[ ]`, `{ }`, `J K`, `j k`, `tab 1-5`), dynamic `commitChanges` / `quickAiNote` labels, and a 7-pair cap per context
+- Add non-Alt `<c-w>` window-resize chords (`<c-w> h` shrink, `<c-w> l` expand, `<c-w> k` side full, `<c-w> j` main full, `<c-w> =` reset) alongside existing `Alt` shortcuts
 
 ### CI
 
