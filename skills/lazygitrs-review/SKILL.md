@@ -12,6 +12,12 @@ PORT=$(cat .lazygitrs.port 2>/dev/null || echo 47657)
 ```
 Treat `~/.lazygitrs_active_session.json` strictly as a fallback only. Reading the local `.lazygitrs.port` file first ensures that multiple concurrent worktrees each communicate with their respective lazygitrs instances without conflicting. The commands below use `$PORT` as a placeholder.
 
+**Request rules (enforced by the server):**
+- Address it as `127.0.0.1`, `localhost` or `[::1]`. Any other `Host` header gets `403`, which blocks DNS-rebinding pages.
+- Every `POST` must send `-H 'content-type: application/json'`. Anything else (`curl -d` defaults to form encoding) gets `415`, which blocks cross-site form posts from web pages.
+- A `notifyCommand` saved in a repo-root `.lines.json` is ignored; only one registered over the API or stored under `.git/` is run.
+- The notify command's output is logged to `.git/lazygitrs-ai-notify.log`, not the worktree root.
+
 The user creates inline notes in the diff view, sends them to your AI session, and you respond by posting annotations back.
 
 ## Architecture

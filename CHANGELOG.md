@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- AI-notes HTTP API rejects non-loopback `Host` headers (`403`) and non-JSON `POST` bodies (`415`), closing CSRF and DNS-rebinding paths to `notifyCommand`
+- `{{session_id}}` is now shell-escaped in the notify command, like `{{prompt}}`
+- A `notifyCommand` persisted in a working-tree `.lines.json` is no longer trusted, so a cloned repo cannot ship a command that runs on `S`
+- Notify command output moved from `<repo>/.lazygitrs-ai-notify.log` to `.git/lazygitrs-ai-notify.log`
+- Update `tokio` (RUSTSEC-2026-0386); replace deprecated `serde_yaml` with `serde_norway` (RUSTSEC-2024-0449)
+
+### Performance
+
+- Periodic auto-refresh no longer re-arms while a refresh is in flight, which ran every full reload twice
+- Remote tag names (`git ls-remote --tags`) are cached for the session and refreshed only after fetch/pull/push/remote edits, so idle refreshes no longer touch the network; remotes are queried in parallel and timed-out `git`/`ssh` processes are killed
+
 ## [0.1.5-cockpit] - 2026-10-30
 
 ### Bug Fixes
