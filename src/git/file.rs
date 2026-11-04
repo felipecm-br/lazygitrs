@@ -17,65 +17,93 @@ impl GitCommands {
     /// Fast status-only load (no numstat / hunk-count subprocesses).
     /// Rapid stage/unstage stays responsive; stats catch up on full refresh.
     pub fn load_files_status_only(&self) -> Result<Vec<File>> {
-        let result = self
-            .git()
-            .args(&["status", "--porcelain", "-uall"])
-            .run_expecting_success()?;
-
-        let mut files = Vec::new();
-        for line in result.stdout.lines() {
-            if line.len() < 4 {
-                continue;
-            }
-
-            let x = line.chars().nth(0).unwrap_or(' ');
-            let y = line.chars().nth(1).unwrap_or(' ');
-            let raw = &line[3..];
-
-            let (has_staged, has_unstaged, tracked, status) = parse_status_codes(x, y);
-
-            let name = if raw.contains(" -> ") {
-                let parts: Vec<&str> = raw.splitn(2, " -> ").collect();
-                format!(
-                    "{} -> {}",
-                    unquote_porcelain_path(parts[0]),
-                    unquote_porcelain_path(parts.get(1).copied().unwrap_or(""))
-                )
-            } else {
-                unquote_porcelain_path(raw)
-            };
-
-            let display_name = name.clone();
-
-            files.push(File {
-                short_status: format!("{}{}", x, y),
-                name,
-                display_name,
-                status,
-                has_staged_changes: has_staged,
-                has_unstaged_changes: has_unstaged,
-                tracked,
-                added: x == 'A' || y == 'A' || !tracked,
-                deleted: x == 'D' || y == 'D',
-                has_merge_conflicts: x == 'U'
-                    || y == 'U'
-                    || (x == 'A' && y == 'A')
-                    || (x == 'D' && y == 'D'),
-                hunk_count: 0,
-                additions: 0,
-                deletions: 0,
-            });
-        }
-
-        files.sort_by(|a, b| {
-            let pa = crate::model::file::review_priority(&a.name);
-            let pb = crate::model::file::review_priority(&b.name);
-            pa.cmp(&pb).then_with(|| a.name.cmp(&b.name))
-        });
-
-        Ok(files)
+        Ok(parse_status_porcelain(&self.status_porcelain()?))
     }
 
+    fn status_porcelain(&self) -> Result<String> {
+        Ok(self
+            .git()
+            .args(&["status", "--porcelain", "-uall"])
+            .run_expecting_success()?
+            .stdout)
+    }
+
+    /// Interval-refresh Files scope. Runs `git status` (one process) and
+    /// returns `(signature, None)` when [`Self::files_signature`] equals
+    /// `prev`; otherwise loads diff stats and repo totals too.
+    #[allow(clippy::type_complexity)]
+    pub fn load_files_if_changed(
+        &self,
+        prev: Option<u64>,
+    ) -> Result<(Option<u64>, Option<(Vec<File>, (usize, usize))>)> {
+        let stdout = self.status_porcelain()?;
+        let mut files = parse_status_porcelain(&stdout);
+        let sig = self.files_signature(&stdout, files.iter().map(|f| f.name.as_str()));
+        if sig.is_some() && sig == prev {
+            return Ok((sig, None));
+        }
+        self.populate_file_diff_stats(&mut files);
+        let totals = self.diff_shortstat()?;
+        Ok((sig, Some((files, totals))))
+    }
+}
+
+fn parse_status_porcelain(stdout: &str) -> Vec<File> {
+    let mut files = Vec::new();
+    for line in stdout.lines() {
+        if line.len() < 4 {
+            continue;
+        }
+
+        let x = line.chars().next().unwrap_or(' ');
+        let y = line.chars().nth(1).unwrap_or(' ');
+        let raw = &line[3..];
+
+        let (has_staged, has_unstaged, tracked, status) = parse_status_codes(x, y);
+
+        let name = if raw.contains(" -> ") {
+            let parts: Vec<&str> = raw.splitn(2, " -> ").collect();
+            format!(
+                "{} -> {}",
+                unquote_porcelain_path(parts[0]),
+                unquote_porcelain_path(parts.get(1).copied().unwrap_or(""))
+            )
+        } else {
+            unquote_porcelain_path(raw)
+        };
+
+        let display_name = name.clone();
+
+        files.push(File {
+            short_status: format!("{}{}", x, y),
+            name,
+            display_name,
+            status,
+            has_staged_changes: has_staged,
+            has_unstaged_changes: has_unstaged,
+            tracked,
+            added: x == 'A' || y == 'A' || !tracked,
+            deleted: x == 'D' || y == 'D',
+            has_merge_conflicts: x == 'U'
+                || y == 'U'
+                || (x == 'A' && y == 'A')
+                || (x == 'D' && y == 'D'),
+            hunk_count: 0,
+            additions: 0,
+            deletions: 0,
+        });
+    }
+
+    files.sort_by(|a, b| {
+        let pa = crate::model::file::review_priority(&a.name);
+        let pb = crate::model::file::review_priority(&b.name);
+        pa.cmp(&pb).then_with(|| a.name.cmp(&b.name))
+    });
+
+    files
+}
+
+impl GitCommands {
     /// Populate final working-tree stats relative to HEAD. Failures are
     /// intentionally non-fatal: status remains useful even when a diff cannot
     /// be produced (for example, during unusual index states).

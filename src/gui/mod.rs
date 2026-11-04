@@ -697,7 +697,18 @@ pub struct Gui {
     files_refresh_rx: Option<mpsc::Receiver<Result<Vec<crate::model::File>>>>,
     /// Interval refresh of the Files scope only: files with diff stats, plus
     /// the repo-wide `(added, deleted)` totals.
-    interval_files_rx: Option<mpsc::Receiver<Result<(Vec<crate::model::File>, (usize, usize))>>>,
+    #[allow(clippy::type_complexity)]
+    interval_files_rx: Option<
+        mpsc::Receiver<
+            Result<(
+                Option<u64>,
+                Option<(Vec<crate::model::File>, (usize, usize))>,
+            )>,
+        >,
+    >,
+    /// Signature of the last Files scope the interval tick loaded; equal
+    /// signatures skip the diff-stat calls (see `GitCommands::files_signature`).
+    interval_files_signature: Option<u64>,
     /// Git metadata fingerprint taken when the last full reload started. The
     /// interval refresh only pays for a full reload when it changes.
     refs_fingerprint: Option<u64>,
@@ -1247,6 +1258,7 @@ impl Gui {
             remote_op_tx,
             files_refresh_rx: None,
             interval_files_rx: None,
+            interval_files_signature: None,
             refs_fingerprint,
             files_refresh_in_progress: false,
             filter_paths_rx: None,

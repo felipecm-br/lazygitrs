@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
+- Auto-fetch no longer forces a full reload plus two network `ls-remote` calls every minute. `git fetch --all` always prints `Fetching <remote>` when there are several remotes, and that was counted as a change. A no-op fetch also bumped ref-directory mtimes, which tripped the refs fingerprint
 - `Ctrl+G` / `Ctrl+N` are no longer hardcoded alongside `toggleWorkingTreeAndHead` / `quickAiNote`, so remapping them frees the keys
 - Files status bar shows the AI commit key
 - `R` in Branches renames the branch again instead of refreshing. Like lazygit, `universal.refresh`, `pushFiles` and `pullFiles` now give way when the active panel binds the same key (refresh still works on `R` in Files, Stash and Status)
@@ -20,6 +21,7 @@ All notable changes to this project will be documented in this file.
 
 ### Features & Ergonomics
 
+- Idle refresh is cheaper: a 10 s tick with no working-tree change runs only `git status` (it used to run 6 git commands). Idle git processes went from 21 to 3 per 30 s on this repo
 - `R` in Commits (`commits.renameCommitWithEditor`) rewords the selected commit in your own editor: `git commit --amend` for HEAD, a one-commit `reword` rebase for older commits
 - Add `cockpit` theme: triadic cold-color architecture, zero-background selection (`bg = Reset` + `BOLD`), and a 1-cell cyan `│` selection gutter at `X=1`
 - Add `omarchy` dynamic theme (`gui.theme: omarchy` or via the theme picker): reads `~/.local/state/omarchy/current/theme/colors.toml` (or `OMARCHY_COLORS_PATH`)

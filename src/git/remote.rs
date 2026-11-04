@@ -153,7 +153,7 @@ impl GitCommands {
             .args(&["fetch", "--all", "--no-write-fetch-head"])
             .env("GIT_TERMINAL_PROMPT", "0")
             .run_expecting_success()?;
-        let changed = !result.stdout.trim().is_empty() || !result.stderr.trim().is_empty();
+        let changed = fetch_output_reports_changes(&result.stdout, &result.stderr);
         if changed {
             // New/removed tags show up in fetch output; re-check remote tags.
             self.invalidate_remote_tags();
@@ -515,6 +515,17 @@ fn github_pr_head_selectors(branch: &str, repos: &[GithubRemoteRepo]) -> Vec<Str
     selectors
 }
 
+/// `git fetch --all` always prints `Fetching <remote>` per remote when there
+/// are several; only other lines (ref updates, new tags, prunes) mean
+/// something changed.
+fn fetch_output_reports_changes(stdout: &str, stderr: &str) -> bool {
+    stdout
+        .lines()
+        .chain(stderr.lines())
+        .map(str::trim)
+        .any(|l| !l.is_empty() && !l.starts_with("Fetching "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -624,5 +635,20 @@ gitlab\thttps://gitlab.com/example/zed.git (fetch)
                 "Blankeos:feature/foo".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn multi_remote_banner_alone_is_not_a_change() {
+        assert!(!fetch_output_reports_changes(
+            "",
+            "Fetching origin\nFetching upstream\n"
+        ));
+    }
+
+    #[test]
+    fn ref_updates_are_a_change() {
+        let stderr =
+            "Fetching origin\nFrom github.com:a/b\n   1234567..89abcde  main -> origin/main\n";
+        assert!(fetch_output_reports_changes("", stderr));
     }
 }

@@ -231,3 +231,38 @@ fn test_idle_fingerprint_skips_redundant_work() {
         "branch checkout must change git metadata fingerprint"
     );
 }
+
+#[test]
+fn test_interval_files_scope_skips_diff_calls_when_unchanged() {
+    let repo = TempRepo::new("files-sig");
+    repo.write_file("a.txt", "one\n");
+    repo.cmd(&["add", "a.txt"]);
+    repo.cmd(&["commit", "-m", "init"]);
+    repo.write_file("a.txt", "one\ntwo\n");
+
+    let git = GitCommands::new(&repo.path).expect("git");
+    let (sig1, loaded) = git.load_files_if_changed(None).expect("first load");
+    let (files, (added, _)) = loaded.expect("first tick loads");
+    assert_eq!(files.len(), 1);
+    assert_eq!(added, 1);
+
+    // Nothing changed: only `git status` runs, stats are not reloaded.
+    let (sig2, loaded) = git.load_files_if_changed(sig1).expect("second load");
+    assert_eq!(sig1, sig2);
+    assert!(loaded.is_none());
+
+    // Editing an already-modified file leaves `git status` identical but
+    // changes the stats: it must reload. (Size changes, so mtime
+    // granularity cannot hide it.)
+    repo.write_file("a.txt", "one\ntwo\nthree\n");
+    let (sig3, loaded) = git.load_files_if_changed(sig2).expect("third load");
+    assert_ne!(sig2, sig3);
+    let (_, (added, _)) = loaded.expect("edit reloads");
+    assert_eq!(added, 2);
+
+    // Staging rewrites the index: reload.
+    repo.cmd(&["add", "a.txt"]);
+    let (sig4, loaded) = git.load_files_if_changed(sig3).expect("fourth load");
+    assert_ne!(sig3, sig4);
+    assert!(loaded.is_some());
+}

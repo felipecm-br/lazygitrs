@@ -723,11 +723,9 @@ impl Gui {
         // Restart the interval now so the tick doesn't re-fire while in flight.
         self.last_refresh_at = Instant::now();
         let git = Arc::clone(&self.git);
+        let prev = self.interval_files_signature;
         std::thread::spawn(move || {
-            let result = git
-                .load_files()
-                .and_then(|files| Ok((files, git.diff_shortstat()?)));
-            let _ = tx.send(result);
+            let _ = tx.send(git.load_files_if_changed(prev));
         });
     }
 
@@ -735,7 +733,7 @@ impl Gui {
         let Some(rx) = self.interval_files_rx.as_ref() else {
             return;
         };
-        let (files, (added, deleted)) = match rx.try_recv() {
+        let (signature, loaded) = match rx.try_recv() {
             Err(mpsc::TryRecvError::Empty) => return,
             Err(mpsc::TryRecvError::Disconnected) => {
                 self.interval_files_rx = None;
@@ -751,10 +749,17 @@ impl Gui {
         };
         self.interval_files_rx = None;
         // A stage/unstage refresh is in flight with fresher, optimistic state;
-        // don't clobber it with a status taken before that git op.
+        // don't clobber it with a status taken before that git op, and forget
+        // the signature so the next tick reloads rather than skips.
         if self.files_refresh_in_progress || self.needs_files_refresh {
+            self.interval_files_signature = None;
             return;
         }
+        self.interval_files_signature = signature;
+        // Nothing the Files scope shows has changed since the last tick.
+        let Some((files, (added, deleted))) = loaded else {
+            return;
+        };
         {
             let mut model = self
                 .model

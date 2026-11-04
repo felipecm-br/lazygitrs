@@ -44,6 +44,30 @@ const COMMON_DIR_FILES: &[&str] = &[
 const MAX_REF_ENTRIES: usize = 5_000;
 
 impl GitCommands {
+    /// Signature of everything the Files scope displays: `git status`
+    /// output, the index, each listed path's size/mtime (catches further
+    /// edits to an already-modified file, which leave status unchanged), and
+    /// the refs fingerprint (diff stats are relative to HEAD). Equal
+    /// signatures mean the diff-stat calls can be skipped.
+    pub fn files_signature<'a>(
+        &self,
+        status_stdout: &str,
+        paths: impl Iterator<Item = &'a str>,
+    ) -> Option<u64> {
+        let (git_dir, _) = self.git_dirs.as_ref()?;
+        let mut h = DefaultHasher::new();
+        status_stdout.hash(&mut h);
+        stat_into(&mut h, &git_dir.join("index"));
+        let root = self.repo_path();
+        for path in paths {
+            // Renames display as "old -> new"; the new path is on disk.
+            let on_disk = path.rsplit(" -> ").next().unwrap_or(path);
+            stat_into(&mut h, &root.join(on_disk));
+        }
+        self.refs_fingerprint()?.hash(&mut h);
+        Some(h.finish())
+    }
+
     /// Fingerprint of git metadata, or `None` when it cannot be computed (no
     /// resolved git dir, or too many loose refs). `None` means "assume changed".
     pub fn refs_fingerprint(&self) -> Option<u64> {
@@ -84,7 +108,11 @@ fn stat_into(h: &mut DefaultHasher, path: &Path) {
 }
 
 fn walk_into(h: &mut DefaultHasher, dir: &Path, budget: &mut usize) -> Option<()> {
-    stat_into(h, dir);
+    // Hash the directory's path only, not its mtime: git creates and removes
+    // `*.lock` files in ref directories even on a no-op `fetch`, which bumps
+    // the mtime without changing any ref. Added/removed refs still show up as
+    // entries below, and updated refs via their own size/mtime.
+    dir.hash(h);
     let Ok(entries) = std::fs::read_dir(dir) else {
         return Some(());
     };
@@ -178,5 +206,22 @@ mod tests {
         step(&["branch", "-f", "other", "HEAD~1"]);
         std::fs::write(r.0.join("a.txt"), "stash me\n").unwrap();
         step(&["stash", "-q"]);
+        step(&["branch", "-D", "other"]);
+    }
+
+    #[test]
+    fn ignores_ref_dir_mtime_from_transient_lock_files() {
+        // A no-op `git fetch` creates and removes lock files under
+        // refs/remotes/<remote>/, bumping only the directory mtime.
+        let r = repo("lockfile");
+        let remote_dir = r.0.join(".git/refs/remotes/origin");
+        std::fs::create_dir_all(&remote_dir).unwrap();
+        std::fs::write(remote_dir.join("main"), "0".repeat(40) + "\n").unwrap();
+        let before = fp(&r);
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let lock = remote_dir.join("main.lock");
+        std::fs::write(&lock, "x").unwrap();
+        std::fs::remove_file(&lock).unwrap();
+        assert_eq!(before, fp(&r));
     }
 }
