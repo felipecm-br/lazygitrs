@@ -748,7 +748,7 @@ impl CommandEntry {
             .unwrap_or(CommandAction::Unavailable);
         Self {
             key,
-            description: description.into(),
+            description,
             action,
         }
     }
@@ -1023,11 +1023,11 @@ pub fn list_picker_highlight_ranges(label: &str, tokens: &[String]) -> Vec<(usiz
     ranges.sort();
     let mut merged: Vec<(usize, usize)> = Vec::with_capacity(ranges.len());
     for (s, e) in ranges {
-        if let Some(last) = merged.last_mut() {
-            if s <= last.1 {
-                last.1 = last.1.max(e);
-                continue;
-            }
+        if let Some(last) = merged.last_mut()
+            && s <= last.1
+        {
+            last.1 = last.1.max(e);
+            continue;
         }
         merged.push((s, e));
     }

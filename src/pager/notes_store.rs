@@ -156,22 +156,22 @@ pub fn resolve_git_dir(repo_path: &Path) -> Option<std::path::PathBuf> {
     if dot_git.is_dir() {
         return Some(dot_git);
     }
-    if dot_git.is_file() {
-        if let Ok(content) = std::fs::read_to_string(&dot_git) {
-            for line in content.lines() {
-                let trimmed = line.trim();
-                if let Some(rest) = trimmed.strip_prefix("gitdir:") {
-                    let gitdir_str = rest.trim();
-                    let gitdir_path = std::path::PathBuf::from(gitdir_str);
-                    if gitdir_path.is_absolute() {
-                        if gitdir_path.exists() {
-                            return Some(gitdir_path);
-                        }
-                    } else {
-                        let combined = repo_path.join(gitdir_path);
-                        if combined.exists() {
-                            return Some(combined);
-                        }
+    if dot_git.is_file()
+        && let Ok(content) = std::fs::read_to_string(&dot_git)
+    {
+        for line in content.lines() {
+            let trimmed = line.trim();
+            if let Some(rest) = trimmed.strip_prefix("gitdir:") {
+                let gitdir_str = rest.trim();
+                let gitdir_path = std::path::PathBuf::from(gitdir_str);
+                if gitdir_path.is_absolute() {
+                    if gitdir_path.exists() {
+                        return Some(gitdir_path);
+                    }
+                } else {
+                    let combined = repo_path.join(gitdir_path);
+                    if combined.exists() {
+                        return Some(combined);
                     }
                 }
             }
@@ -340,13 +340,13 @@ pub fn save(repo_path: &Path, mut file: LinesFile) {
     if let Some(parent) = target.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    if let Ok(json) = serde_json::to_string_pretty(&file) {
-        if std::fs::write(&target, json).is_ok() {
-            // Clean up legacy .lines.json in repository working tree to avoid untracked git status pollution
-            let legacy = repo_path.join(".lines.json");
-            if legacy.exists() && legacy != target {
-                let _ = std::fs::remove_file(legacy);
-            }
+    if let Ok(json) = serde_json::to_string_pretty(&file)
+        && std::fs::write(&target, json).is_ok()
+    {
+        // Clean up legacy .lines.json in repository working tree to avoid untracked git status pollution
+        let legacy = repo_path.join(".lines.json");
+        if legacy.exists() && legacy != target {
+            let _ = std::fs::remove_file(legacy);
         }
     }
 }

@@ -11,7 +11,6 @@
 //! Private modules own capability probing, bounded source loading, and inline
 //! diff eligibility. This module owns rendering and graphics lifetimes.
 
-use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
@@ -259,8 +258,8 @@ pub(crate) fn fit_cells(
     let scale = scale.min(1.0);
     let fit_px_w = ((img_w as f64 * scale).round() as u64).max(1);
     let fit_px_h = ((img_h as f64 * scale).round() as u64).max(1);
-    let cells_w = ((fit_px_w + font.0 as u64 - 1) / font.0 as u64).min(pane_w as u64) as u16;
-    let cells_h = ((fit_px_h + font.1 as u64 - 1) / font.1 as u64).min(pane_h as u64) as u16;
+    let cells_w = fit_px_w.div_ceil(font.0 as u64).min(pane_w as u64) as u16;
+    let cells_h = fit_px_h.div_ceil(font.1 as u64).min(pane_h as u64) as u16;
     (cells_w.max(1), cells_h.max(1))
 }
 

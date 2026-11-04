@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct KeybindingConfig {
     pub universal: UniversalKeybinding,
     pub status: StatusKeybinding,
@@ -12,20 +13,6 @@ pub struct KeybindingConfig {
     pub stash: StashKeybinding,
     #[serde(rename = "commitMessage")]
     pub commit_message: CommitMessageKeybinding,
-}
-
-impl Default for KeybindingConfig {
-    fn default() -> Self {
-        Self {
-            universal: UniversalKeybinding::default(),
-            status: StatusKeybinding::default(),
-            files: FilesKeybinding::default(),
-            branches: BranchesKeybinding::default(),
-            commits: CommitsKeybinding::default(),
-            stash: StashKeybinding::default(),
-            commit_message: CommitMessageKeybinding::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -466,9 +453,7 @@ pub fn parse_key(s: &str) -> Option<KeyEvent> {
 pub fn matches_key(key: KeyEvent, binding: &str) -> bool {
     if let Some(expected) = parse_key(binding) {
         let code_match = match (key.code, expected.code) {
-            (KeyCode::Char(c1), KeyCode::Char(c2)) => {
-                c1.to_ascii_lowercase() == c2.to_ascii_lowercase()
-            }
+            (KeyCode::Char(c1), KeyCode::Char(c2)) => c1.eq_ignore_ascii_case(&c2),
             (code1, code2) => code1 == code2,
         };
         code_match && key.modifiers == expected.modifiers

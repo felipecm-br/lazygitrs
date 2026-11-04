@@ -110,18 +110,12 @@ pub fn generate_commit_message_from_diff_cancellable(
         thread::sleep(Duration::from_millis(50));
     };
 
-    let stdout = stdout_handle.join().unwrap_or_else(|_| {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "stdout reader panicked",
-        ))
-    })?;
-    let stderr = stderr_handle.join().unwrap_or_else(|_| {
-        Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "stderr reader panicked",
-        ))
-    })?;
+    let stdout = stdout_handle
+        .join()
+        .unwrap_or_else(|_| Err(std::io::Error::other("stdout reader panicked")))?;
+    let stderr = stderr_handle
+        .join()
+        .unwrap_or_else(|_| Err(std::io::Error::other("stderr reader panicked")))?;
 
     if !status.success() {
         bail!("Generate command failed: {}", stderr.trim());
@@ -282,10 +276,10 @@ fn strip_markdown_fences(raw: &str) -> String {
     // Strip single backticks from the first line (e.g. `feat: blah blah`)
     // The AI sometimes wraps only the subject line in backticks.
     let mut lines: Vec<&str> = trimmed.lines().collect();
-    if let Some(first) = lines.first_mut() {
-        if let Some(stripped) = first.strip_prefix('`').and_then(|s| s.strip_suffix('`')) {
-            *first = stripped;
-        }
+    if let Some(first) = lines.first_mut()
+        && let Some(stripped) = first.strip_prefix('`').and_then(|s| s.strip_suffix('`'))
+    {
+        *first = stripped;
     }
 
     lines.join("\n").trim().to_string()

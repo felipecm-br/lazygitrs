@@ -77,15 +77,14 @@ fn is_konsole() -> bool {
 /// iTerm2/WezTerm hints. `rio` is known-broken and `Hyper` is unverified, so
 /// neither enables graphics here.
 fn iterm2_hint_from_env() -> bool {
-    if let Ok(tp) = std::env::var("TERM_PROGRAM") {
-        if tp.contains("iTerm")
+    if let Ok(tp) = std::env::var("TERM_PROGRAM")
+        && (tp.contains("iTerm")
             || tp.contains("WezTerm")
             || tp.contains("mintty")
             || tp.contains("vscode")
-            || tp.contains("Tabby")
-        {
-            return true;
-        }
+            || tp.contains("Tabby"))
+    {
+        return true;
     }
     if std::env::var("LC_TERMINAL").is_ok_and(|v| v.contains("iTerm")) {
         return true;
@@ -149,10 +148,9 @@ fn font_size_from_winsize() -> Option<(u16, u16)> {
         .read(true)
         .write(true)
         .open("/dev/tty")
+        && let Some(fs) = font_size_from_fd(f.as_raw_fd())
     {
-        if let Some(fs) = font_size_from_fd(f.as_raw_fd()) {
-            return Some(fs);
-        }
+        return Some(fs);
     }
     font_size_from_fd(libc::STDOUT_FILENO)
 }
@@ -196,8 +194,8 @@ fn probe_tty_responses(timeout: Duration) -> Option<Vec<Response>> {
     // SAFETY: tcsetattr on our own tty fd.
     let mut raw = _guard.orig;
     raw.c_lflag &= !(libc::ICANON | libc::ECHO);
-    raw.c_cc[libc::VMIN as usize] = 0;
-    raw.c_cc[libc::VTIME as usize] = 0;
+    raw.c_cc[libc::VMIN] = 0;
+    raw.c_cc[libc::VTIME] = 0;
     if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &raw) } != 0 {
         return None;
     }

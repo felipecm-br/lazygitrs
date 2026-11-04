@@ -774,14 +774,14 @@ impl DiffModeState {
         self.search_results.clear();
 
         // Current branch first (if it exists)
-        if !head_branch_name.is_empty() {
-            if let Some(branch) = branches.iter().find(|b| b.name == head_branch_name) {
-                self.search_results.push(RefCandidate {
-                    display: branch.name.clone(),
-                    ref_value: branch.name.clone(),
-                    kind: RefKind::Branch,
-                });
-            }
+        if !head_branch_name.is_empty()
+            && let Some(branch) = branches.iter().find(|b| b.name == head_branch_name)
+        {
+            self.search_results.push(RefCandidate {
+                display: branch.name.clone(),
+                ref_value: branch.name.clone(),
+                kind: RefKind::Branch,
+            });
         }
 
         // Local branches (skip the head branch we already added)

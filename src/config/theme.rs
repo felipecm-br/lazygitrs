@@ -494,10 +494,10 @@ pub struct ThemeToml {
 
 impl ThemeToml {
     pub fn resolved_appearance(&self) -> ThemeAppearance {
-        if let Some(raw) = self.appearance.as_deref() {
-            if let Some(parsed) = ThemeAppearance::parse(raw) {
-                return parsed;
-            }
+        if let Some(raw) = self.appearance.as_deref()
+            && let Some(parsed) = ThemeAppearance::parse(raw)
+        {
+            return parsed;
         }
         self.background
             .as_deref()
@@ -902,12 +902,11 @@ impl ColorTheme {
                 if file.path().extension().and_then(|e| e.to_str()) != Some("toml") {
                     continue;
                 }
-                if let Some(contents) = file.contents_utf8() {
-                    if let Ok(theme_toml) = toml::from_str::<ThemeToml>(contents) {
-                        if theme_toml.id == self.id {
-                            return theme_toml.to_theme();
-                        }
-                    }
+                if let Some(contents) = file.contents_utf8()
+                    && let Ok(theme_toml) = toml::from_str::<ThemeToml>(contents)
+                    && theme_toml.id == self.id
+                {
+                    return theme_toml.to_theme();
                 }
             }
         }
@@ -939,16 +938,15 @@ pub fn load_color_themes() -> Vec<ColorTheme> {
             if file.path().extension().and_then(|e| e.to_str()) != Some("toml") {
                 continue;
             }
-            if let Some(contents) = file.contents_utf8() {
-                if let Ok(theme_toml) = toml::from_str::<ThemeToml>(contents) {
-                    if seen_ids.insert(theme_toml.id.clone()) {
-                        themes.push(ColorTheme {
-                            name: theme_toml.name.clone(),
-                            id: theme_toml.id.clone(),
-                            appearance: theme_toml.resolved_appearance(),
-                        });
-                    }
-                }
+            if let Some(contents) = file.contents_utf8()
+                && let Ok(theme_toml) = toml::from_str::<ThemeToml>(contents)
+                && seen_ids.insert(theme_toml.id.clone())
+            {
+                themes.push(ColorTheme {
+                    name: theme_toml.name.clone(),
+                    id: theme_toml.id.clone(),
+                    appearance: theme_toml.resolved_appearance(),
+                });
             }
         }
     }
@@ -1008,16 +1006,15 @@ fn discover_user_themes() -> Option<Vec<(String, String, ThemeAppearance)>> {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                    if let Ok(contents) = std::fs::read_to_string(&path) {
-                        if let Ok(theme_toml) = toml::from_str::<ThemeToml>(&contents) {
-                            result.push((
-                                theme_toml.id.clone(),
-                                theme_toml.name.clone(),
-                                theme_toml.resolved_appearance(),
-                            ));
-                        }
-                    }
+                if path.extension().and_then(|e| e.to_str()) == Some("toml")
+                    && let Ok(contents) = std::fs::read_to_string(&path)
+                    && let Ok(theme_toml) = toml::from_str::<ThemeToml>(&contents)
+                {
+                    result.push((
+                        theme_toml.id.clone(),
+                        theme_toml.name.clone(),
+                        theme_toml.resolved_appearance(),
+                    ));
                 }
             }
         }
@@ -1038,14 +1035,12 @@ fn load_user_theme(id: &str) -> Option<Theme> {
         if let Ok(entries) = std::fs::read_dir(&dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                if path.extension().and_then(|e| e.to_str()) == Some("toml") {
-                    if let Ok(contents) = std::fs::read_to_string(&path) {
-                        if let Ok(theme_toml) = toml::from_str::<ThemeToml>(&contents) {
-                            if theme_toml.id == id {
-                                return Some(theme_toml.to_theme());
-                            }
-                        }
-                    }
+                if path.extension().and_then(|e| e.to_str()) == Some("toml")
+                    && let Ok(contents) = std::fs::read_to_string(&path)
+                    && let Ok(theme_toml) = toml::from_str::<ThemeToml>(&contents)
+                    && theme_toml.id == id
+                {
+                    return Some(theme_toml.to_theme());
                 }
             }
         }

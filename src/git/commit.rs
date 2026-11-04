@@ -30,36 +30,6 @@ fn commit_filter_path_suggestions<'a>(paths: impl Iterator<Item = &'a str>) -> V
     suggestions
 }
 
-#[cfg(test)]
-mod commit_filter_suggestion_tests {
-    use super::commit_filter_path_suggestions;
-
-    #[test]
-    fn path_suggestions_include_files_and_each_parent_directory() {
-        let suggestions = commit_filter_path_suggestions(
-            [
-                "src/gui/controller/commits.rs",
-                "README.md",
-                "src/gui/mod.rs",
-                "",
-            ]
-            .into_iter(),
-        );
-
-        assert_eq!(
-            suggestions,
-            [
-                "README.md",
-                "src",
-                "src/gui",
-                "src/gui/controller",
-                "src/gui/controller/commits.rs",
-                "src/gui/mod.rs",
-            ]
-        );
-    }
-}
-
 impl GitCommands {
     /// Return repository paths suitable for history filtering.
     ///
@@ -484,11 +454,7 @@ fn extract_tags(decoration: &str) -> Vec<String> {
         .split(", ")
         .filter_map(|d| {
             let d = d.trim();
-            if let Some(tag) = d.strip_prefix("tag: ") {
-                Some(tag.to_string())
-            } else {
-                None
-            }
+            d.strip_prefix("tag: ").map(|tag| tag.to_string())
         })
         .collect()
 }
@@ -510,4 +476,34 @@ fn extract_refs(decoration: &str) -> Vec<String> {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod commit_filter_suggestion_tests {
+    use super::commit_filter_path_suggestions;
+
+    #[test]
+    fn path_suggestions_include_files_and_each_parent_directory() {
+        let suggestions = commit_filter_path_suggestions(
+            [
+                "src/gui/controller/commits.rs",
+                "README.md",
+                "src/gui/mod.rs",
+                "",
+            ]
+            .into_iter(),
+        );
+
+        assert_eq!(
+            suggestions,
+            [
+                "README.md",
+                "src",
+                "src/gui",
+                "src/gui/controller",
+                "src/gui/controller/commits.rs",
+                "src/gui/mod.rs",
+            ]
+        );
+    }
 }

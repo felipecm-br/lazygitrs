@@ -107,10 +107,10 @@ impl GitCommands {
                 if let Some(hash) = line.strip_prefix("# good: ") {
                     good.push(hash.trim().to_string());
                 }
-            } else if line.starts_with("# bad: ") {
-                if let Some(hash) = line.strip_prefix("# bad: ") {
-                    bad.push(hash.trim().to_string());
-                }
+            } else if line.starts_with("# bad: ")
+                && let Some(hash) = line.strip_prefix("# bad: ")
+            {
+                bad.push(hash.trim().to_string());
             }
         }
 

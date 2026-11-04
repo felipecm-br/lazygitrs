@@ -74,14 +74,13 @@ impl AppConfig {
         let user_config = UserConfig::load(&config_dir, config_override.as_ref())?;
         if let Some(ref over) = config_override {
             let over_path = user_config::expand_tilde(over);
-            if let Some(parent) = over_path.parent() {
-                if over_path.is_absolute()
+            if let Some(parent) = over_path.parent()
+                && (over_path.is_absolute()
                     || over.ends_with(".yml")
                     || over.ends_with(".yaml")
-                    || over_path.exists()
-                {
-                    config_dir = parent.to_path_buf();
-                }
+                    || over_path.exists())
+            {
+                config_dir = parent.to_path_buf();
             }
         }
         let app_state = AppState::load(&state_path)?;

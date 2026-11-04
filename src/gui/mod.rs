@@ -151,12 +151,11 @@ fn handle_list_picker_mouse(
                 let max_scroll = display.len().saturating_sub(list_height);
                 let effective_scroll = core.scroll_offset.min(max_scroll);
                 let display_idx = effective_scroll + row_in_list;
-                if let Some((is_header, item_idx)) = display.get(display_idx) {
-                    if !*is_header {
-                        if let Some(ei) = item_idx {
-                            core.selected = *ei;
-                        }
-                    }
+                if let Some((is_header, item_idx)) = display.get(display_idx)
+                    && !*is_header
+                    && let Some(ei) = item_idx
+                {
+                    core.selected = *ei;
                 }
             }
         }
@@ -343,10 +342,10 @@ impl DiffPreviewCache {
     }
 
     fn remove(&mut self, key: &str) {
-        if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
-            if let Some(entry) = self.entries.remove(index) {
-                self.estimated_bytes = self.estimated_bytes.saturating_sub(entry.estimated_bytes);
-            }
+        if let Some(index) = self.entries.iter().position(|entry| entry.key == key)
+            && let Some(entry) = self.entries.remove(index)
+        {
+            self.estimated_bytes = self.estimated_bytes.saturating_sub(entry.estimated_bytes);
         }
     }
 
@@ -432,16 +431,16 @@ fn spawn_diff_scheduler(
                 }
                 DiffSchedulerEvent::Complete => {
                     active_jobs = active_jobs.saturating_sub(1);
-                    if let Some(job) = pending_job.take() {
-                        if generation.load(Ordering::Relaxed) == job.generation {
-                            active_jobs += 1;
-                            spawn_diff_job(
-                                job,
-                                result_tx.clone(),
-                                scheduler_tx.clone(),
-                                Arc::clone(&generation),
-                            );
-                        }
+                    if let Some(job) = pending_job.take()
+                        && generation.load(Ordering::Relaxed) == job.generation
+                    {
+                        active_jobs += 1;
+                        spawn_diff_job(
+                            job,
+                            result_tx.clone(),
+                            scheduler_tx.clone(),
+                            Arc::clone(&generation),
+                        );
                     }
                 }
             }
@@ -872,7 +871,7 @@ fn synthesize_new_file_diff(filename: &str, content: &str) -> String {
     let mut diff = String::new();
     diff.push_str(&format!("diff --git a/{f} b/{f}\n", f = filename));
     diff.push_str("new file mode 100644\n");
-    diff.push_str(&format!("--- /dev/null\n"));
+    diff.push_str("--- /dev/null\n");
     diff.push_str(&format!("+++ b/{}\n", filename));
     diff.push_str(&format!("@@ -0,0 +1,{} @@\n", count));
     for line in &lines {
@@ -911,16 +910,16 @@ fn parse_file_diff_payload(
             git.file_content(current_path)
                 .or_else(|_| git.file_content_staged(current_path))
         };
-        if let Ok(content) = content {
-            if !content.is_empty() {
-                return DiffPayload::Parsed(DiffViewState::parse_content(
-                    current_path,
-                    &content,
-                    &content,
-                    4,
-                    exists,
-                ));
-            }
+        if let Ok(content) = content
+            && !content.is_empty()
+        {
+            return DiffPayload::Parsed(DiffViewState::parse_content(
+                current_path,
+                &content,
+                &content,
+                4,
+                exists,
+            ));
         }
     }
     DiffPayload::Parsed(DiffViewState::parse_diff_output(name, diff, 4, exists))
@@ -951,18 +950,17 @@ fn parse_commit_file_diff_payload(
     ) {
         return DiffPayload::Parsed(parsed);
     }
-    if is_rename_only_diff(diff) {
-        if let Ok(content) = git.file_content_at_commit(hash, current_path) {
-            if !content.is_empty() {
-                return DiffPayload::Parsed(DiffViewState::parse_content(
-                    current_path,
-                    &content,
-                    &content,
-                    4,
-                    false,
-                ));
-            }
-        }
+    if is_rename_only_diff(diff)
+        && let Ok(content) = git.file_content_at_commit(hash, current_path)
+        && !content.is_empty()
+    {
+        return DiffPayload::Parsed(DiffViewState::parse_content(
+            current_path,
+            &content,
+            &content,
+            4,
+            false,
+        ));
     }
     DiffPayload::Parsed(DiffViewState::parse_diff_output(name, diff, 4, false))
 }
@@ -1065,7 +1063,7 @@ impl Gui {
             .diff_view
             .as_deref()
             .and_then(DiffViewLayout::from_state_value)
-            .unwrap_or_else(|| {
+            .unwrap_or({
                 if config.user_config.gui.side_by_side {
                     DiffViewLayout::SideBySide
                 } else {
@@ -1802,14 +1800,13 @@ impl Gui {
                     // Re-apply filters / selection-dependent views after stream
                     // completes (initial load and background refresh). Needed so
                     // startup `-f/--filter` takes effect once commits arrive.
-                    if was_refresh
+                    if (was_refresh
                         || self.commit_path_filter.is_some()
                         || !self.commit_branch_filter.is_empty()
-                        || !self.commit_author_filter.is_empty()
+                        || !self.commit_author_filter.is_empty())
+                        && let Err(err) = self.after_model_refresh()
                     {
-                        if let Err(err) = self.after_model_refresh() {
-                            self.show_error("Refresh failed", err);
-                        }
+                        self.show_error("Refresh failed", err);
                     }
                 }
             }
@@ -2136,10 +2133,8 @@ impl Gui {
                 textarea,
                 is_commit: true,
                 ..
-            } => {
-                if effective_width > 0 {
-                    auto_wrap_textarea(textarea, effective_width);
-                }
+            } if effective_width > 0 => {
+                auto_wrap_textarea(textarea, effective_width);
             }
             PopupState::Input {
                 textarea,
@@ -2158,10 +2153,8 @@ impl Gui {
                 body_textarea,
                 body_state,
                 ..
-            } => {
-                if effective_width > 0 {
-                    body_state.render_into(body_textarea, effective_width);
-                }
+            } if effective_width > 0 => {
+                body_state.render_into(body_textarea, effective_width);
             }
             _ => {}
         }
@@ -2180,14 +2173,13 @@ impl Gui {
                     self.apply_diff_payload(result.diff_key, result.payload);
                 } else if result.diff_key != self.last_diff_key
                     && result.diff_key != self.displayed_diff_key
+                    && let DiffPayload::Parsed(parsed) = result.payload
                 {
-                    if let DiffPayload::Parsed(parsed) = result.payload {
-                        let mut view = DiffViewState::new();
-                        view.wrap = self.diff_view.wrap;
-                        view.view_layout = self.diff_view.view_layout;
-                        view.apply_parsed(parsed);
-                        self.diff_preview_cache.insert(result.diff_key, view);
-                    }
+                    let mut view = DiffViewState::new();
+                    view.wrap = self.diff_view.wrap;
+                    view.view_layout = self.diff_view.view_layout;
+                    view.apply_parsed(parsed);
+                    self.diff_preview_cache.insert(result.diff_key, view);
                 }
                 continue;
             }
@@ -2240,37 +2232,37 @@ impl Gui {
         self.inject_hunk_comments();
 
         // Handle pending navigation after diff is loaded
-        if let Some(nav) = self.pending_navigation.take() {
-            if let Some(line) = nav.line {
-                // Note: `self.diff_view.load_notes` populated `self.diff_view.lines` with notes if they exist.
-                // Let's find the matching note ID or just scroll to the line.
-                // Scroll so the line is somewhat centered.
-                let mut current_file = None;
-                let content_offset = self.diff_view.lines.iter().position(|l| {
-                    if let Some(header) = &l.file_header {
-                        current_file = Some(header.clone());
-                    }
-                    let file_matches = current_file.as_ref().map_or(true, |f| f == &nav.file_path);
-
-                    file_matches
-                        && (l.new_line.as_ref().map(|(n, _)| *n) == Some(line)
-                            || l.old_line.as_ref().map(|(n, _)| *n) == Some(line))
-                });
-
-                if let Some(offset) = content_offset {
-                    self.diff_view.scroll_offset = offset.saturating_sub(10);
+        if let Some(nav) = self.pending_navigation.take()
+            && let Some(line) = nav.line
+        {
+            // Note: `self.diff_view.load_notes` populated `self.diff_view.lines` with notes if they exist.
+            // Let's find the matching note ID or just scroll to the line.
+            // Scroll so the line is somewhat centered.
+            let mut current_file = None;
+            let content_offset = self.diff_view.lines.iter().position(|l| {
+                if let Some(header) = &l.file_header {
+                    current_file = Some(header.clone());
                 }
+                let file_matches = current_file.as_ref().is_none_or(|f| f == &nav.file_path);
 
-                // To select the note, we look for a note intersecting this line.
-                // We can just search the loaded `lines_file.notes` in `notes_store`.
-                let lines_file = crate::pager::notes_store::load(self.git.repo_path());
-                if let Some(note) = lines_file
-                    .notes
-                    .iter()
-                    .find(|n| n.file == nav.file_path && n.line == line)
-                {
-                    self.diff_view.selected_note = Some(note.id.clone());
-                }
+                file_matches
+                    && (l.new_line.as_ref().map(|(n, _)| *n) == Some(line)
+                        || l.old_line.as_ref().map(|(n, _)| *n) == Some(line))
+            });
+
+            if let Some(offset) = content_offset {
+                self.diff_view.scroll_offset = offset.saturating_sub(10);
+            }
+
+            // To select the note, we look for a note intersecting this line.
+            // We can just search the loaded `lines_file.notes` in `notes_store`.
+            let lines_file = crate::pager::notes_store::load(self.git.repo_path());
+            if let Some(note) = lines_file
+                .notes
+                .iter()
+                .find(|n| n.file == nav.file_path && n.line == line)
+            {
+                self.diff_view.selected_note = Some(note.id.clone());
             }
         }
     }
@@ -2304,15 +2296,14 @@ impl Gui {
 
             let mut hunk_text = String::new();
             for line in &self.diff_view.lines[start..end] {
-                if let Some((_, ref old)) = line.old_line {
-                    if let Some((_, ref new)) = line.new_line {
-                        if old == new {
-                            hunk_text.push_str("  ");
-                            hunk_text.push_str(old);
-                            hunk_text.push('\n');
-                            continue;
-                        }
-                    }
+                if let Some((_, ref old)) = line.old_line
+                    && let Some((_, ref new)) = line.new_line
+                    && old == new
+                {
+                    hunk_text.push_str("  ");
+                    hunk_text.push_str(old);
+                    hunk_text.push('\n');
+                    continue;
                 }
                 if let Some((_, ref old)) = line.old_line {
                     hunk_text.push_str("- ");
@@ -2704,23 +2695,21 @@ impl Gui {
             if generation_counter.load(Ordering::Relaxed) != generation {
                 return;
             }
-            if !stat_cached {
-                if let Ok(stat) = git.commit_stat(&hash) {
-                    if let Ok(mut cache) = stat_cache.lock() {
-                        cache.insert(hash.clone(), stat);
-                    }
-                }
+            if !stat_cached
+                && let Ok(stat) = git.commit_stat(&hash)
+                && let Ok(mut cache) = stat_cache.lock()
+            {
+                cache.insert(hash.clone(), stat);
             }
 
             if generation_counter.load(Ordering::Relaxed) != generation {
                 return;
             }
-            if !message_cached {
-                if let Ok(message) = git.commit_message_full(&hash) {
-                    if let Ok(mut cache) = message_cache.lock() {
-                        cache.insert(hash, message);
-                    }
-                }
+            if !message_cached
+                && let Ok(message) = git.commit_message_full(&hash)
+                && let Ok(mut cache) = message_cache.lock()
+            {
+                cache.insert(hash, message);
             }
         }));
     }
@@ -3393,21 +3382,20 @@ impl Gui {
         F: FnOnce(&crate::git::GitCommands) -> Result<popup::MenuAsyncResult> + Send + 'static,
     {
         // Restore the menu popup (stashed by execute_menu_action) with loading_index set.
-        if let Some(menu) = self.pending_menu_popup.take() {
-            if let PopupState::Menu {
+        if let Some(menu) = self.pending_menu_popup.take()
+            && let PopupState::Menu {
                 title,
                 items,
                 selected,
                 ..
             } = menu
-            {
-                self.popup = PopupState::Menu {
-                    title,
-                    items,
-                    selected,
-                    loading_index: Some(index),
-                };
-            }
+        {
+            self.popup = PopupState::Menu {
+                title,
+                items,
+                selected,
+                loading_index: Some(index),
+            };
         }
         let git = Arc::clone(&self.git);
         let tx = self.menu_async_tx.clone();
@@ -4051,10 +4039,11 @@ impl Gui {
             || self.diff_focused
             || self.diff_mode.active;
 
-        if can_use_return_key && !keybindings.universal.return_to_cockpit.is_empty() {
-            if matches_key(key, &keybindings.universal.return_to_cockpit) {
-                return true;
-            }
+        if can_use_return_key
+            && !keybindings.universal.return_to_cockpit.is_empty()
+            && matches_key(key, &keybindings.universal.return_to_cockpit)
+        {
+            return true;
         }
 
         false
@@ -4446,10 +4435,10 @@ impl Gui {
         }
 
         // Patch building mode (<c-p>)
-        if matches_key(key, &keybindings.universal.create_patch_options_menu) {
-            if self.context_mgr.active() == ContextId::Commits || self.patch_building.active {
-                return controller::patch_building::show_patch_menu(self);
-            }
+        if matches_key(key, &keybindings.universal.create_patch_options_menu)
+            && (self.context_mgr.active() == ContextId::Commits || self.patch_building.active)
+        {
+            return controller::patch_building::show_patch_menu(self);
         }
 
         // Help popup (?)
@@ -4764,10 +4753,10 @@ impl Gui {
                     return Ok(());
                 }
                 KeyCode::Char('d') => {
-                    if let Some(ref note_id) = self.diff_view.selected_note.clone() {
-                        if self.ensure_note_visible(note_id) {
-                            self.delete_note(note_id.clone());
-                        }
+                    if let Some(ref note_id) = self.diff_view.selected_note.clone()
+                        && self.ensure_note_visible(note_id)
+                    {
+                        self.delete_note(note_id.clone());
                     }
                     return Ok(());
                 }
@@ -4958,14 +4947,13 @@ impl Gui {
         if matches_key(key, &keybindings.universal.undo_revert_block) {
             if self.context_mgr.active() == ContextId::Files
                 && !self.diff_view.revert_undo_stack.is_empty()
+                && let Err(err) = self.undo_last_revert_block()
             {
-                if let Err(err) = self.undo_last_revert_block() {
-                    self.popup = PopupState::Message {
-                        title: "Undo revert failed".to_string(),
-                        message: format!("{}", err),
-                        kind: MessageKind::Error,
-                    };
-                }
+                self.popup = PopupState::Message {
+                    title: "Undo revert failed".to_string(),
+                    message: format!("{}", err),
+                    kind: MessageKind::Error,
+                };
             }
             return Ok(());
         }
@@ -5052,14 +5040,13 @@ impl Gui {
         if matches_key(key, &keybindings.universal.undo_revert_block) {
             if self.context_mgr.active() == ContextId::Files
                 && !self.diff_view.revert_undo_stack.is_empty()
+                && let Err(err) = self.undo_last_revert_block()
             {
-                if let Err(err) = self.undo_last_revert_block() {
-                    self.popup = PopupState::Message {
-                        title: "Undo revert failed".to_string(),
-                        message: format!("{}", err),
-                        kind: MessageKind::Error,
-                    };
-                }
+                self.popup = PopupState::Message {
+                    title: "Undo revert failed".to_string(),
+                    message: format!("{}", err),
+                    kind: MessageKind::Error,
+                };
             }
             return Ok(());
         }
@@ -5071,7 +5058,7 @@ impl Gui {
                         .diff_view
                         .selected_revert_hunk
                         .or(self.diff_view.hovered_revert_hunk)
-                        .or_else(|| {
+                        .or({
                             if !self.diff_view.hunk_starts.is_empty() {
                                 Some(0)
                             } else {
@@ -5104,21 +5091,19 @@ impl Gui {
                 }
                 return Ok(());
             }
-            KeyCode::Char('c') => {
-                if !self.diff_view.lines.is_empty() {
-                    let line_idx = if let Some((idx, _)) = self.diff_view.hovered_line {
-                        idx
-                    } else {
-                        // First visible line in diff
-                        self.diff_view.scroll_offset
-                    };
-                    let panel = if let Some((_, p)) = self.diff_view.hovered_line {
-                        p
-                    } else {
-                        crate::pager::side_by_side::DiffPanel::New
-                    };
-                    self.open_inline_note_editor(line_idx, panel, None);
-                }
+            KeyCode::Char('c') if !self.diff_view.lines.is_empty() => {
+                let line_idx = if let Some((idx, _)) = self.diff_view.hovered_line {
+                    idx
+                } else {
+                    // First visible line in diff
+                    self.diff_view.scroll_offset
+                };
+                let panel = if let Some((_, p)) = self.diff_view.hovered_line {
+                    p
+                } else {
+                    crate::pager::side_by_side::DiffPanel::New
+                };
+                self.open_inline_note_editor(line_idx, panel, None);
             }
             // n/N: cycle to next/previous note
             KeyCode::Char('n') => {
@@ -5555,16 +5540,15 @@ impl Gui {
                 core.search_textarea.insert_str(&cleaned);
                 let new_search = core.search_textarea.lines().join("");
                 let new_lower = new_search.to_lowercase();
-                if !new_lower.is_empty() {
-                    if let Some(idx) = core
+                if !new_lower.is_empty()
+                    && let Some(idx) = core
                         .items
                         .iter()
                         .position(|i| i.label.to_lowercase().contains(&new_lower))
-                    {
-                        core.selected = idx;
-                        self.current_theme_index = idx;
-                        core.scroll_offset = idx;
-                    }
+                {
+                    core.selected = idx;
+                    self.current_theme_index = idx;
+                    core.scroll_offset = idx;
                 }
             }
             _ => {}
@@ -5581,14 +5565,14 @@ impl Gui {
             PopupState::Confirm { .. } => {
                 if key.code == KeyCode::Char('y') || key.code == KeyCode::Enter {
                     let popup = std::mem::replace(&mut self.popup, PopupState::None);
-                    if let PopupState::Confirm { on_confirm, .. } = popup {
-                        if let Err(e) = on_confirm(self) {
-                            self.popup = PopupState::Message {
-                                title: "Error".to_string(),
-                                message: format!("{}", e),
-                                kind: MessageKind::Error,
-                            };
-                        }
+                    if let PopupState::Confirm { on_confirm, .. } = popup
+                        && let Err(e) = on_confirm(self)
+                    {
+                        self.popup = PopupState::Message {
+                            title: "Error".to_string(),
+                            message: format!("{}", e),
+                            kind: MessageKind::Error,
+                        };
                     }
                 } else {
                     self.popup = PopupState::None;
@@ -6230,10 +6214,10 @@ impl Gui {
                     // Arrow keys only for navigation — j/k must type into the search filter
                     // (same pattern as ListPicker / CommandPalette / ThemePicker).
                     KeyCode::Down if key.modifiers.is_empty() => {
-                        if let PopupState::Checklist { selected, .. } = &mut self.popup {
-                            if visible_count > 0 {
-                                *selected = (*selected + 1).min(visible_count - 1);
-                            }
+                        if let PopupState::Checklist { selected, .. } = &mut self.popup
+                            && visible_count > 0
+                        {
+                            *selected = (*selected + 1).min(visible_count - 1);
                         }
                     }
                     KeyCode::Up if key.modifiers.is_empty() => {
@@ -6536,14 +6520,14 @@ impl Gui {
                         return Ok(());
                     };
                     let popup = std::mem::replace(&mut self.popup, PopupState::None);
-                    if let PopupState::RefPicker { on_confirm, .. } = popup {
-                        if let Err(e) = on_confirm(self, &value) {
-                            self.popup = PopupState::Message {
-                                title: "Error".to_string(),
-                                message: format!("{}", e),
-                                kind: MessageKind::Error,
-                            };
-                        }
+                    if let PopupState::RefPicker { on_confirm, .. } = popup
+                        && let Err(e) = on_confirm(self, &value)
+                    {
+                        self.popup = PopupState::Message {
+                            title: "Error".to_string(),
+                            message: format!("{}", e),
+                            kind: MessageKind::Error,
+                        };
                     }
                     return Ok(());
                 }
@@ -6621,14 +6605,14 @@ impl Gui {
                         return Ok(());
                     };
                     let popup = std::mem::replace(&mut self.popup, PopupState::None);
-                    if let PopupState::ListPicker { on_confirm, .. } = popup {
-                        if let Err(e) = on_confirm(self, &value) {
-                            self.popup = PopupState::Message {
-                                title: "Error".to_string(),
-                                message: format!("{}", e),
-                                kind: MessageKind::Error,
-                            };
-                        }
+                    if let PopupState::ListPicker { on_confirm, .. } = popup
+                        && let Err(e) = on_confirm(self, &value)
+                    {
+                        self.popup = PopupState::Message {
+                            title: "Error".to_string(),
+                            message: format!("{}", e),
+                            kind: MessageKind::Error,
+                        };
                     }
                     return Ok(());
                 }
@@ -6715,7 +6699,6 @@ impl Gui {
                 KeyCode::Esc => {
                     self.current_theme_index = *original_theme_index;
                     self.popup = PopupState::None;
-                    return;
                 }
                 KeyCode::Enter => {
                     let idx = core.selected;
@@ -6726,7 +6709,6 @@ impl Gui {
                         state.color_theme = Some(ct.id.to_string());
                         let _ = state.save(&self.config.state_path);
                     }
-                    return;
                 }
                 KeyCode::Down => {
                     if let Some(next) = list_picker_next_match(&matching, core.selected) {
@@ -7650,33 +7632,29 @@ impl Gui {
                 action: Some(Box::new(|gui| {
                     let clipboard_text = read_clipboard();
                     if let Some(mut editor) = gui.pending_commit_popup.take() {
-                        if let Some(text) = clipboard_text {
-                            if !text.is_empty() {
-                                if let PopupState::CommitInput {
-                                    ref mut summary_textarea,
-                                    ref mut body_textarea,
-                                    ref mut body_state,
-                                    ..
-                                } = editor
-                                {
-                                    // Split pasted text: first line → summary, rest → body
-                                    let (summary, body) = match text.find('\n') {
-                                        Some(idx) => {
-                                            let s = text[..idx].to_string();
-                                            let b = text[idx + 1..]
-                                                .trim_start_matches('\n')
-                                                .to_string();
-                                            (s, b)
-                                        }
-                                        None => (text.clone(), String::new()),
-                                    };
-                                    popup::set_commit_summary_text(summary_textarea, &summary);
-                                    // Preserve pasted newlines; soft-wrap is display-only.
-                                    body_state.set_text(popup::unwrap_commit_body(&body));
-                                    let wrap = gui.commit_body_wrap_width();
-                                    body_state.render_into(body_textarea, wrap);
+                        if let Some(text) = clipboard_text
+                            && !text.is_empty()
+                            && let PopupState::CommitInput {
+                                ref mut summary_textarea,
+                                ref mut body_textarea,
+                                ref mut body_state,
+                                ..
+                            } = editor
+                        {
+                            // Split pasted text: first line → summary, rest → body
+                            let (summary, body) = match text.find('\n') {
+                                Some(idx) => {
+                                    let s = text[..idx].to_string();
+                                    let b = text[idx + 1..].trim_start_matches('\n').to_string();
+                                    (s, b)
                                 }
-                            }
+                                None => (text.clone(), String::new()),
+                            };
+                            popup::set_commit_summary_text(summary_textarea, &summary);
+                            // Preserve pasted newlines; soft-wrap is display-only.
+                            body_state.set_text(popup::unwrap_commit_body(&body));
+                            let wrap = gui.commit_body_wrap_width();
+                            body_state.render_into(body_textarea, wrap);
                         }
                         gui.popup = editor;
                     }
@@ -8373,32 +8351,30 @@ impl Gui {
             let area = ratatui::layout::Rect::new(0, 0, self.layout.width, self.layout.height);
             if let Some(visible_idx) =
                 views::checklist_item_at(&self.popup, area, mouse.column, mouse.row)
-            {
-                if let PopupState::Checklist {
+                && let PopupState::Checklist {
                     items,
                     selected,
                     search_textarea,
                     ..
                 } = &mut self.popup
-                {
-                    if *selected == visible_idx {
-                        let search = search_textarea.lines().join("");
-                        let visible_indices: Vec<usize> = items
-                            .iter()
-                            .enumerate()
-                            .filter(|(_, it)| {
-                                it.is_free_entry
-                                    || search.is_empty()
-                                    || it.label.to_lowercase().contains(&search.to_lowercase())
-                            })
-                            .map(|(i, _)| i)
-                            .collect();
-                        if let Some(&real_idx) = visible_indices.get(visible_idx) {
-                            items[real_idx].checked = !items[real_idx].checked;
-                        }
-                    } else {
-                        *selected = visible_idx;
+            {
+                if *selected == visible_idx {
+                    let search = search_textarea.lines().join("");
+                    let visible_indices: Vec<usize> = items
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, it)| {
+                            it.is_free_entry
+                                || search.is_empty()
+                                || it.label.to_lowercase().contains(&search.to_lowercase())
+                        })
+                        .map(|(i, _)| i)
+                        .collect();
+                    if let Some(&real_idx) = visible_indices.get(visible_idx) {
+                        items[real_idx].checked = !items[real_idx].checked;
                     }
+                } else {
+                    *selected = visible_idx;
                 }
             }
             return;
@@ -8781,17 +8757,17 @@ impl Gui {
                 }
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                if let Some(ref mut sel) = self.diff_view.selection {
-                    if sel.dragging {
-                        let (cmin, cmax) = pl.content_range(sel.panel);
-                        // Allow dragging into gutter area of same panel (5 cols before content)
-                        let col_min = cmin.saturating_sub(5);
-                        sel.end_col = mouse.column.max(col_min).min(cmax.saturating_sub(1));
-                        sel.end_row = mouse
-                            .row
-                            .max(pl.inner_y)
-                            .min(pl.inner_end_y.saturating_sub(1));
-                    }
+                if let Some(ref mut sel) = self.diff_view.selection
+                    && sel.dragging
+                {
+                    let (cmin, cmax) = pl.content_range(sel.panel);
+                    // Allow dragging into gutter area of same panel (5 cols before content)
+                    let col_min = cmin.saturating_sub(5);
+                    sel.end_col = mouse.column.max(col_min).min(cmax.saturating_sub(1));
+                    sel.end_row = mouse
+                        .row
+                        .max(pl.inner_y)
+                        .min(pl.inner_end_y.saturating_sub(1));
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -9133,13 +9109,13 @@ impl Gui {
             }
             MouseEventKind::Drag(MouseButton::Left) => {
                 let pl = DiffPanelLayout::compute(diff_rect, &self.diff_view);
-                if let Some(ref mut sel) = self.diff_view.selection {
-                    if sel.dragging {
-                        let (cmin, cmax) = pl.content_range(sel.panel);
-                        let col_min = cmin.saturating_sub(5);
-                        sel.end_col = col.max(col_min).min(cmax.saturating_sub(1));
-                        sel.end_row = row.max(pl.inner_y).min(pl.inner_end_y.saturating_sub(1));
-                    }
+                if let Some(ref mut sel) = self.diff_view.selection
+                    && sel.dragging
+                {
+                    let (cmin, cmax) = pl.content_range(sel.panel);
+                    let col_min = cmin.saturating_sub(5);
+                    sel.end_col = col.max(col_min).min(cmax.saturating_sub(1));
+                    sel.end_row = row.max(pl.inner_y).min(pl.inner_end_y.saturating_sub(1));
                 }
             }
             MouseEventKind::Up(MouseButton::Left) => {
@@ -9206,14 +9182,13 @@ impl Gui {
                     let visible_height = commits_rect.height.saturating_sub(2) as usize;
                     if self.diff_mode.commits_scroll + visible_height + 3
                         >= self.diff_mode.commits.len()
+                        && let Err(error) = controller::diff_mode::load_more_commits(self)
                     {
-                        if let Err(error) = controller::diff_mode::load_more_commits(self) {
-                            self.popup = PopupState::Message {
-                                title: "Compare commits".into(),
-                                message: error.to_string(),
-                                kind: popup::MessageKind::Error,
-                            };
-                        }
+                        self.popup = PopupState::Message {
+                            title: "Compare commits".into(),
+                            message: error.to_string(),
+                            kind: popup::MessageKind::Error,
+                        };
                     }
                     scroll::scroll_viewport(
                         &mut self.diff_mode.commits_scroll,
@@ -9224,15 +9199,11 @@ impl Gui {
                     self.diff_mode.commits_viewport_manually_scrolled = true;
                 }
             }
-            MouseEventKind::ScrollLeft => {
-                if rect_contains(diff_rect, col, row) {
-                    self.diff_view.scroll_left(4);
-                }
+            MouseEventKind::ScrollLeft if rect_contains(diff_rect, col, row) => {
+                self.diff_view.scroll_left(4);
             }
-            MouseEventKind::ScrollRight => {
-                if rect_contains(diff_rect, col, row) {
-                    self.diff_view.scroll_right(4);
-                }
+            MouseEventKind::ScrollRight if rect_contains(diff_rect, col, row) => {
+                self.diff_view.scroll_right(4);
             }
             _ => {}
         }
@@ -9673,7 +9644,7 @@ impl Gui {
             }
         }
 
-        let note_start_y = pl.inner_y + self.diff_view.sticky_row_height(&pl) + acc as u16;
+        let note_start_y = pl.inner_y + self.diff_view.sticky_row_height(pl) + acc as u16;
         let click_off = row.saturating_sub(note_start_y);
 
         // Iterate ALL notes in render order; each takes 5 rows.
@@ -9778,7 +9749,7 @@ impl Gui {
 
             let mut closest: Option<(&crate::pager::notes_store::LinesEntry, usize)> = None;
             for &note in &subset {
-                let dist = (note.line as isize - deleted.line as isize).abs() as usize;
+                let dist = (note.line as isize - deleted.line as isize).unsigned_abs();
                 match closest {
                     None => {
                         closest = Some((note, dist));
@@ -9786,10 +9757,11 @@ impl Gui {
                     Some((prev_note, prev_dist)) => {
                         if dist < prev_dist {
                             closest = Some((note, dist));
-                        } else if dist == prev_dist {
-                            if note.panel == deleted.panel && prev_note.panel != deleted.panel {
-                                closest = Some((note, dist));
-                            }
+                        } else if dist == prev_dist
+                            && note.panel == deleted.panel
+                            && prev_note.panel != deleted.panel
+                        {
+                            closest = Some((note, dist));
                         }
                     }
                 }
@@ -10131,10 +10103,10 @@ impl Gui {
                         .map(|s| s.server_url)
                 });
 
-            if let Some(ref url) = server_url {
-                if Self::push_prompt_to_tui(url, &prompt) {
-                    return;
-                }
+            if let Some(ref url) = server_url
+                && Self::push_prompt_to_tui(url, &prompt)
+            {
+                return;
             }
 
             // 2. Try SSE — if there are connected listeners, push the event.
@@ -10164,16 +10136,12 @@ impl Gui {
                     if let Ok(home) = std::env::var("HOME") {
                         let global_path =
                             std::path::PathBuf::from(home).join(".lazygitrs_active_session.json");
-                        if let Ok(data) = std::fs::read_to_string(&global_path) {
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-                                if let Some(cmd) =
-                                    json.get("notifyCommand").and_then(|v| v.as_str())
-                                {
-                                    if !cmd.is_empty() {
-                                        return Some(cmd.to_string());
-                                    }
-                                }
-                            }
+                        if let Ok(data) = std::fs::read_to_string(&global_path)
+                            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&data)
+                            && let Some(cmd) = json.get("notifyCommand").and_then(|v| v.as_str())
+                            && !cmd.is_empty()
+                        {
+                            return Some(cmd.to_string());
                         }
                     }
                     if let Ok(home) = std::env::var("HOME") {
@@ -10208,14 +10176,12 @@ impl Gui {
                     if let Ok(home) = std::env::var("HOME") {
                         let global_path =
                             std::path::PathBuf::from(home).join(".lazygitrs_active_session.json");
-                        if let Ok(data) = std::fs::read_to_string(&global_path) {
-                            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-                                if let Some(sid) = json.get("sessionId").and_then(|v| v.as_str()) {
-                                    if !sid.is_empty() {
-                                        return Some(sid.to_string());
-                                    }
-                                }
-                            }
+                        if let Ok(data) = std::fs::read_to_string(&global_path)
+                            && let Ok(json) = serde_json::from_str::<serde_json::Value>(&data)
+                            && let Some(sid) = json.get("sessionId").and_then(|v| v.as_str())
+                            && !sid.is_empty()
+                        {
+                            return Some(sid.to_string());
                         }
                     }
                     None
@@ -10880,22 +10846,19 @@ impl Gui {
         if was_active_in_progress
             && previous_current_hash.is_some()
             && previous_current_hash == current_hash
+            && let Some(selected_hash) = previous_selected_hash
+            && let Some(selected) = self
+                .rebase_mode
+                .entries
+                .iter()
+                .position(|entry| entry.hash == selected_hash)
         {
-            if let Some(selected_hash) = previous_selected_hash {
-                if let Some(selected) = self
-                    .rebase_mode
-                    .entries
-                    .iter()
-                    .position(|entry| entry.hash == selected_hash)
-                {
-                    self.rebase_mode.selected = selected;
-                    let list_len = self.rebase_mode.entries.len() + 1;
-                    let max_scroll = list_len.saturating_sub(self.rebase_mode.visible_height);
-                    self.rebase_mode.scroll = previous_scroll.min(max_scroll);
-                    self.rebase_mode
-                        .ensure_visible(self.rebase_mode.visible_height);
-                }
-            }
+            self.rebase_mode.selected = selected;
+            let list_len = self.rebase_mode.entries.len() + 1;
+            let max_scroll = list_len.saturating_sub(self.rebase_mode.visible_height);
+            self.rebase_mode.scroll = previous_scroll.min(max_scroll);
+            self.rebase_mode
+                .ensure_visible(self.rebase_mode.visible_height);
         }
 
         true
@@ -10945,13 +10908,12 @@ impl Gui {
             model.replace_keeping_file_order(new_model);
 
             // If branch filters are active, reload commits for those branches only.
-            if !self.commit_branch_filter.is_empty() {
-                if let Ok(filtered) = self
+            if !self.commit_branch_filter.is_empty()
+                && let Ok(filtered) = self
                     .git
                     .load_commits_for_branches(&self.commit_branch_filter, commit_limit)
-                {
-                    model.commits = filtered;
-                }
+            {
+                model.commits = filtered;
             }
         }
         self.after_model_refresh()
@@ -10978,13 +10940,11 @@ impl Gui {
         if (self.context_mgr.active() == ContextId::BranchCommits
             || self.context_mgr.active() == ContextId::BranchCommitFiles)
             && !self.branch_commits_name.is_empty()
-        {
-            if let Ok(commits) = self
+            && let Ok(commits) = self
                 .git
                 .load_commits_for_branch(&self.branch_commits_name, 300)
-            {
-                model.set_sub_commits(commits);
-            }
+        {
+            model.set_sub_commits(commits);
         }
 
         // If we're viewing remote branches (or drilled into commits/files from them), re-load them
@@ -10993,14 +10953,12 @@ impl Gui {
                 || ((self.context_mgr.active() == ContextId::BranchCommits
                     || self.context_mgr.active() == ContextId::BranchCommitFiles)
                     && self.sub_commits_parent_context == ContextId::RemoteBranches))
-        {
-            if let Some(remote) = model
+            && let Some(remote) = model
                 .remotes
                 .iter()
                 .find(|r| r.name == self.remote_branches_name)
-            {
-                model.sub_remote_branches = remote.branches.clone();
-            }
+        {
+            model.sub_remote_branches = remote.branches.clone();
         }
 
         // If we're viewing commit/stash files, re-load them (refresh wipes the model)
@@ -11038,22 +10996,23 @@ impl Gui {
             }
         }
         // If rebase mode was active but the rebase completed, exit and show success.
-        if !is_rebasing && self.rebase_mode.active {
-            if self.rebase_mode.phase == RebasePhase::InProgress {
-                let branch = self.rebase_mode.branch_name.clone();
-                let count = self.rebase_mode.total_count;
-                self.rebase_mode.exit();
-                self.popup = crate::gui::popup::PopupState::Message {
-                    title: "Rebase complete".to_string(),
-                    message: format!(
-                        "Successfully rebased '{}' ({} commit{}).",
-                        branch,
-                        count,
-                        if count == 1 { "" } else { "s" },
-                    ),
-                    kind: crate::gui::popup::MessageKind::Info,
-                };
-            }
+        if !is_rebasing
+            && self.rebase_mode.active
+            && self.rebase_mode.phase == RebasePhase::InProgress
+        {
+            let branch = self.rebase_mode.branch_name.clone();
+            let count = self.rebase_mode.total_count;
+            self.rebase_mode.exit();
+            self.popup = crate::gui::popup::PopupState::Message {
+                title: "Rebase complete".to_string(),
+                message: format!(
+                    "Successfully rebased '{}' ({} commit{}).",
+                    branch,
+                    count,
+                    if count == 1 { "" } else { "s" },
+                ),
+                kind: crate::gui::popup::MessageKind::Info,
+            };
         }
         // Clear the dismissal flag once no rebase is in progress, so the next
         // rebase (or new conflict) can auto-open the InProgress view again.
@@ -11473,6 +11432,142 @@ impl Command for EnableMouseCaptureWithoutHover {
     fn is_ansi_code_supported(&self) -> bool {
         Command::is_ansi_code_supported(&crossterm::event::EnableMouseCapture)
     }
+}
+
+fn setup_terminal() -> Result<(Term, bool)> {
+    terminal::enable_raw_mode()?;
+    // Prefer /dev/tty when stdout is piped (Helix `:insert-output`, etc.).
+    let mut out =
+        crate::os::tty::open_tui_output().context("Failed to open terminal output for TUI")?;
+    execute!(
+        out,
+        EnterAlternateScreen,
+        EnableMouseCaptureWithoutHover,
+        crossterm::event::EnableFocusChange,
+        crossterm::event::EnableBracketedPaste,
+        crossterm::style::Print("\x1b[?1003h"), // Enable Any-event mouse tracking for Hover
+        cursor::Hide
+    )?;
+    // Detect graphics before Crossterm creates its internal response reader.
+    crate::pager::image_preview::initialize();
+    // Helix leaves progressive kitty keyboard enhancement enabled across
+    // `:insert-output` and keeps a `/dev/tty` EventStream open. Probing races
+    // that reader (blank hang); instead pop leftover stacks and push our flags
+    // so CSI-u keys parse as KeyEvents.
+    let keyboard_enhanced = if crate::os::tty::nested_tty_launch() {
+        for _ in 0..4 {
+            let _ = execute!(out, crossterm::event::PopKeyboardEnhancementFlags);
+        }
+        true
+    } else {
+        crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false)
+    };
+    if keyboard_enhanced {
+        execute!(
+            out,
+            crossterm::event::PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
+        )?;
+    }
+    let backend = CrosstermBackend::new(out);
+    let terminal = Terminal::new(backend)?;
+    Ok((terminal, keyboard_enhanced))
+}
+
+/// Shell-escape a string so it can be safely passed as a single argument.
+/// Wraps in single quotes and escapes any embedded single quotes.
+fn shell_escape_arg(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Split a command string into program + args, respecting single-quoted
+/// segments (the prompt is always single-quoted via `shell_escape_arg`).
+fn split_command(cmd: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut current = String::new();
+    let mut in_single_quote = false;
+
+    for c in cmd.chars() {
+        match c {
+            '\'' if !in_single_quote => {
+                in_single_quote = true;
+            }
+            '\'' if in_single_quote => {
+                in_single_quote = false;
+            }
+            c if in_single_quote => {
+                current.push(c);
+            }
+            ' ' | '\t' if !in_single_quote => {
+                if !current.is_empty() {
+                    parts.push(std::mem::take(&mut current));
+                }
+            }
+            c => {
+                current.push(c);
+            }
+        }
+    }
+    if !current.is_empty() {
+        parts.push(current);
+    }
+    parts
+}
+
+/// Put the terminal back the way we found it.
+///
+/// Nothing drains leftover input here: crossterm guards its reader with a
+/// process-wide mutex that the input thread holds for the duration of its
+/// blocking read, so any drain from this thread would silently no-op.
+fn restore_terminal(terminal: &mut Term, keyboard_enhanced: bool) -> Result<()> {
+    // Helix `:insert-output` keeps its own alt-screen / raw mode / mouse / focus
+    // / bracketed-paste / kitty stack across the child. If we tear those down
+    // here, Helix resumes drawing into a world that no longer exists and the
+    // user is left staring at the primary-screen `hx` launch line with a dead
+    // TUI. Nested exit must only undo *our* transient state and hand the tty
+    // foreground back.
+    let nested = crate::os::tty::nested_tty_launch();
+    if nested {
+        // Hide our cursor leftovers, pop the kitty flags we pushed, then put
+        // Helix's progressive flags back (DISAMBIGUATE | REPORT_ALTERNATE_KEYS).
+        execute!(terminal.backend_mut(), cursor::Show)?;
+        if keyboard_enhanced {
+            execute!(
+                terminal.backend_mut(),
+                crossterm::event::PopKeyboardEnhancementFlags
+            )?;
+            execute!(
+                terminal.backend_mut(),
+                crossterm::event::PushKeyboardEnhancementFlags(
+                    crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                        | crossterm::event::KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                )
+            )?;
+        }
+        terminal.backend_mut().flush()?;
+        crate::os::tty::restore_foreground_tty();
+        return Ok(());
+    }
+
+    // Standalone / non-nested: full teardown.
+    crate::os::tty::restore_foreground_tty();
+    if keyboard_enhanced {
+        execute!(
+            terminal.backend_mut(),
+            crossterm::event::PopKeyboardEnhancementFlags
+        )?;
+    }
+    execute!(
+        terminal.backend_mut(),
+        crossterm::style::Print("\x1b[?1003l"),
+        crossterm::event::DisableMouseCapture,
+        crossterm::event::DisableFocusChange,
+        crossterm::event::DisableBracketedPaste,
+        cursor::Show,
+        LeaveAlternateScreen
+    )?;
+
+    terminal::disable_raw_mode()?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -12466,140 +12561,4 @@ mod terminal_mouse_tests {
         assert_eq!(gui.quit_reason, QuitReason::Normal);
         assert_eq!(gui.quit_reason.exit_code(), 0);
     }
-}
-
-fn setup_terminal() -> Result<(Term, bool)> {
-    terminal::enable_raw_mode()?;
-    // Prefer /dev/tty when stdout is piped (Helix `:insert-output`, etc.).
-    let mut out =
-        crate::os::tty::open_tui_output().context("Failed to open terminal output for TUI")?;
-    execute!(
-        out,
-        EnterAlternateScreen,
-        EnableMouseCaptureWithoutHover,
-        crossterm::event::EnableFocusChange,
-        crossterm::event::EnableBracketedPaste,
-        crossterm::style::Print("\x1b[?1003h"), // Enable Any-event mouse tracking for Hover
-        cursor::Hide
-    )?;
-    // Detect graphics before Crossterm creates its internal response reader.
-    crate::pager::image_preview::initialize();
-    // Helix leaves progressive kitty keyboard enhancement enabled across
-    // `:insert-output` and keeps a `/dev/tty` EventStream open. Probing races
-    // that reader (blank hang); instead pop leftover stacks and push our flags
-    // so CSI-u keys parse as KeyEvents.
-    let keyboard_enhanced = if crate::os::tty::nested_tty_launch() {
-        for _ in 0..4 {
-            let _ = execute!(out, crossterm::event::PopKeyboardEnhancementFlags);
-        }
-        true
-    } else {
-        crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false)
-    };
-    if keyboard_enhanced {
-        execute!(
-            out,
-            crossterm::event::PushKeyboardEnhancementFlags(keyboard_enhancement_flags())
-        )?;
-    }
-    let backend = CrosstermBackend::new(out);
-    let terminal = Terminal::new(backend)?;
-    Ok((terminal, keyboard_enhanced))
-}
-
-/// Shell-escape a string so it can be safely passed as a single argument.
-/// Wraps in single quotes and escapes any embedded single quotes.
-fn shell_escape_arg(s: &str) -> String {
-    format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-/// Split a command string into program + args, respecting single-quoted
-/// segments (the prompt is always single-quoted via `shell_escape_arg`).
-fn split_command(cmd: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_single_quote = false;
-
-    for c in cmd.chars() {
-        match c {
-            '\'' if !in_single_quote => {
-                in_single_quote = true;
-            }
-            '\'' if in_single_quote => {
-                in_single_quote = false;
-            }
-            c if in_single_quote => {
-                current.push(c);
-            }
-            ' ' | '\t' if !in_single_quote => {
-                if !current.is_empty() {
-                    parts.push(std::mem::take(&mut current));
-                }
-            }
-            c => {
-                current.push(c);
-            }
-        }
-    }
-    if !current.is_empty() {
-        parts.push(current);
-    }
-    parts
-}
-
-/// Put the terminal back the way we found it.
-///
-/// Nothing drains leftover input here: crossterm guards its reader with a
-/// process-wide mutex that the input thread holds for the duration of its
-/// blocking read, so any drain from this thread would silently no-op.
-fn restore_terminal(terminal: &mut Term, keyboard_enhanced: bool) -> Result<()> {
-    // Helix `:insert-output` keeps its own alt-screen / raw mode / mouse / focus
-    // / bracketed-paste / kitty stack across the child. If we tear those down
-    // here, Helix resumes drawing into a world that no longer exists and the
-    // user is left staring at the primary-screen `hx` launch line with a dead
-    // TUI. Nested exit must only undo *our* transient state and hand the tty
-    // foreground back.
-    let nested = crate::os::tty::nested_tty_launch();
-    if nested {
-        // Hide our cursor leftovers, pop the kitty flags we pushed, then put
-        // Helix's progressive flags back (DISAMBIGUATE | REPORT_ALTERNATE_KEYS).
-        execute!(terminal.backend_mut(), cursor::Show)?;
-        if keyboard_enhanced {
-            execute!(
-                terminal.backend_mut(),
-                crossterm::event::PopKeyboardEnhancementFlags
-            )?;
-            execute!(
-                terminal.backend_mut(),
-                crossterm::event::PushKeyboardEnhancementFlags(
-                    crossterm::event::KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
-                        | crossterm::event::KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
-                )
-            )?;
-        }
-        terminal.backend_mut().flush()?;
-        crate::os::tty::restore_foreground_tty();
-        return Ok(());
-    }
-
-    // Standalone / non-nested: full teardown.
-    crate::os::tty::restore_foreground_tty();
-    if keyboard_enhanced {
-        execute!(
-            terminal.backend_mut(),
-            crossterm::event::PopKeyboardEnhancementFlags
-        )?;
-    }
-    execute!(
-        terminal.backend_mut(),
-        crossterm::style::Print("\x1b[?1003l"),
-        crossterm::event::DisableMouseCapture,
-        crossterm::event::DisableFocusChange,
-        crossterm::event::DisableBracketedPaste,
-        cursor::Show,
-        LeaveAlternateScreen
-    )?;
-
-    terminal::disable_raw_mode()?;
-    Ok(())
 }

@@ -143,24 +143,24 @@ fn main() {
         }
 
         // 2. Try to notify running instance for the current directory via API
-        if let Ok(port_str) = std::fs::read_to_string(".lazygitrs.port") {
-            if let Ok(port) = port_str.trim().parse::<u16>() {
-                let url = format!("http://127.0.0.1:{}/session-api", port);
-                let _ = std::process::Command::new("curl")
-                    .args([
-                        "-s",
-                        "-X",
-                        "POST",
-                        &url,
-                        "-H",
-                        "content-type: application/json",
-                        "--data",
-                        r#"{"action":"unregister"}"#,
-                    ])
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
-                    .status();
-            }
+        if let Ok(port_str) = std::fs::read_to_string(".lazygitrs.port")
+            && let Ok(port) = port_str.trim().parse::<u16>()
+        {
+            let url = format!("http://127.0.0.1:{}/session-api", port);
+            let _ = std::process::Command::new("curl")
+                .args([
+                    "-s",
+                    "-X",
+                    "POST",
+                    &url,
+                    "-H",
+                    "content-type: application/json",
+                    "--data",
+                    r#"{"action":"unregister"}"#,
+                ])
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
         }
 
         println!(

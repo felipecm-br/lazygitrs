@@ -413,10 +413,10 @@ pub fn render(
                 }
             }
             // Highlight `/` search matches on the full-mode list.
-            if let Some((query, _, _)) = search_state {
-                if !query.is_empty() {
-                    render_list_search_highlights(frame, fl.main_panel, query, theme);
-                }
+            if let Some((query, _, _)) = search_state
+                && !query.is_empty()
+            {
+                render_list_search_highlights(frame, fl.main_panel, query, theme);
             }
         }
         // Full-mode details strip (sidebar-focused only) — compact, above sidebar.
@@ -1034,12 +1034,11 @@ pub fn render(
 
     // Highlight `/` search matches on the active list (lazygit-style substring).
     // Applied after list widgets paint so selection styles stay intact.
-    if let Some((query, _, _)) = search_state {
-        if !query.is_empty() {
-            if let Some(list_rect) = fl.side_panels.get(active_panel_index).copied() {
-                render_list_search_highlights(frame, list_rect, query, theme);
-            }
-        }
+    if let Some((query, _, _)) = search_state
+        && !query.is_empty()
+        && let Some(list_rect) = fl.side_panels.get(active_panel_index).copied()
+    {
+        render_list_search_highlights(frame, list_rect, query, theme);
     }
 
     // Render main panel (skipped when side panel is fully expanded)
@@ -1407,815 +1406,6 @@ pub fn checklist_item_at(popup: &PopupState, area: Rect, col: u16, row: u16) -> 
     }
     let idx = (row - list_start) as usize;
     if idx < visible_count { Some(idx) } else { None }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{
-        checklist_item_at, command_log_geometry, format_key_hint, menu_item_at, render_popup,
-    };
-    use crate::config::Theme;
-    use crate::gui::popup::{ChecklistItem, MenuItem, MessageKind, PopupState};
-    use ratatui::Terminal;
-    use ratatui::backend::TestBackend;
-    use ratatui::layout::Rect;
-
-    fn render_tab(
-        model: &crate::model::Model,
-        context: super::ContextId,
-        mode: super::ScreenMode,
-    ) -> Vec<String> {
-        let mut terminal = Terminal::new(TestBackend::new(160, 40)).unwrap();
-        let mut contexts = super::ContextManager::new();
-        contexts.set_active(context);
-        terminal
-            .draw(|frame| {
-                super::render(
-                    frame,
-                    model,
-                    &mut contexts,
-                    &super::LayoutState::default(),
-                    &PopupState::None,
-                    &crate::config::AppConfig {
-                        debug: false,
-                        version: String::new(),
-                        user_config: Default::default(),
-                        app_state: Default::default(),
-                        config_dir: Default::default(),
-                        state_dir: Default::default(),
-                        state_path: Default::default(),
-                    },
-                    &Theme::default(),
-                    &mut super::DiffViewState::default(),
-                    &mut super::presentation::commits::CommitListCache::default(),
-                    mode,
-                    false,
-                    &[],
-                    &Default::default(),
-                    false,
-                    None,
-                    None,
-                    &[],
-                    false,
-                    &[],
-                    false,
-                    &[],
-                    &Default::default(),
-                    "",
-                    "",
-                    "",
-                    "",
-                    super::ContextId::Commits,
-                    0,
-                    None,
-                    false,
-                    &[],
-                    None,
-                    false,
-                    false,
-                    &Default::default(),
-                    &Default::default(),
-                    &mut 0,
-                    &mut String::new(),
-                    false,
-                    false,
-                    false,
-                    false,
-                    false,
-                );
-            })
-            .unwrap();
-        terminal
-            .backend()
-            .buffer()
-            .content
-            .chunks(160)
-            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
-            .collect()
-    }
-
-    fn sample_worktree(
-        path: &str,
-        branch: &str,
-        current: bool,
-        main: bool,
-    ) -> crate::model::Worktree {
-        crate::model::Worktree {
-            path: path.into(),
-            branch: branch.into(),
-            hash: String::new(),
-            is_current: current,
-            is_main: main,
-        }
-    }
-
-    #[test]
-    fn worktrees_render_names_branches_and_main_label_in_every_mode() {
-        let model = crate::model::Model {
-            worktrees: vec![
-                sample_worktree("/repos/quarta", "feat/main", true, true),
-                sample_worktree(
-                    "/repos/worktree-pfparser",
-                    "experiment/parser",
-                    false,
-                    false,
-                ),
-            ],
-            ..Default::default()
-        };
-        for mode in [
-            super::ScreenMode::Normal,
-            super::ScreenMode::Half,
-            super::ScreenMode::Full,
-        ] {
-            let rows = render_tab(&model, super::ContextId::Worktrees, mode);
-            let main = rows.iter().find(|row| row.contains("* quarta")).unwrap();
-            assert!(main.contains("* quarta"));
-            assert!(main.contains("feat/main (main worktree)"));
-            assert!(!main.contains("/repos/"));
-            let linked = rows
-                .iter()
-                .find(|row| row.contains("worktree-pfparser experiment/parser"))
-                .unwrap();
-            assert!(linked.contains("worktree-pfparser experiment/parser"));
-            assert!(!linked.contains("(main worktree)"));
-            assert!(!linked.contains("/repos/"));
-            assert_eq!(main.find("feat/main"), linked.find("experiment/parser"));
-        }
-    }
-
-    #[test]
-    fn worktree_columns_use_unicode_display_width() {
-        let model = crate::model::Model {
-            worktrees: vec![
-                sample_worktree("/repos/树", "branch-one", false, false),
-                sample_worktree("/repos/abc", "branch-two", true, false),
-            ],
-            ..Default::default()
-        };
-        let rows = render_tab(&model, super::ContextId::Worktrees, super::ScreenMode::Full);
-        assert!(rows.iter().any(|row| row.contains("树   branch-one")));
-        assert!(rows.iter().any(|row| row.contains("* abc branch-two")));
-    }
-
-    #[test]
-    fn submodules_render_in_every_mode_and_empty_lists_stay_blank() {
-        let mut model = crate::model::Model::default();
-        for mode in [
-            super::ScreenMode::Normal,
-            super::ScreenMode::Half,
-            super::ScreenMode::Full,
-        ] {
-            let rows = render_tab(&model, super::ContextId::Submodules, mode);
-            assert!(!rows.join("\n").contains("(no submodules)"));
-        }
-        model.submodules.push(crate::git::submodule::Submodule {
-            name: "shared-lib".into(),
-            path: "vendor/shared-lib".into(),
-            url: String::new(),
-        });
-        for mode in [
-            super::ScreenMode::Normal,
-            super::ScreenMode::Half,
-            super::ScreenMode::Full,
-        ] {
-            let rows = render_tab(&model, super::ContextId::Submodules, mode);
-            assert!(
-                rows.iter()
-                    .any(|row| row.contains("shared-lib vendor/shared-lib"))
-            );
-        }
-    }
-
-    #[test]
-    fn format_key_hint_formats_modifiers_and_preserves_plain() {
-        assert_eq!(format_key_hint("<c-s>"), "ctrl+s");
-        assert_eq!(format_key_hint("<C-s>"), "ctrl+s");
-        assert_eq!(format_key_hint("<ctrl-s>"), "ctrl+s");
-        assert_eq!(format_key_hint("<c+s>"), "ctrl+s");
-        assert_eq!(format_key_hint("Ctrl+S"), "ctrl+s");
-        assert_eq!(format_key_hint("ctrl-s"), "ctrl+s");
-        assert_eq!(format_key_hint("<c-l>"), "ctrl+l");
-        assert_eq!(format_key_hint("<c-f>"), "ctrl+f");
-        assert_eq!(format_key_hint("<a-h>"), "alt+h");
-        assert_eq!(format_key_hint("<alt-h>"), "alt+h");
-        assert_eq!(format_key_hint("<s-f>"), "shift+f");
-        assert_eq!(format_key_hint("<shift-f>"), "shift+f");
-        assert_eq!(format_key_hint("<shift-tab>"), "shift+tab");
-        assert_eq!(format_key_hint("<space>"), "space");
-        assert_eq!(format_key_hint("<Space>"), "space");
-        assert_eq!(format_key_hint("<Enter>"), "enter");
-        assert_eq!(format_key_hint("<escape>"), "esc");
-        assert_eq!(format_key_hint("f"), "f");
-        assert_eq!(format_key_hint("F"), "F");
-        assert_eq!(format_key_hint("ctrl+s"), "ctrl+s");
-        assert_eq!(format_key_hint(""), "");
-    }
-
-    #[test]
-    fn status_bar_reflects_dynamic_open_log_menu_keybinding() {
-        use crate::config::KeybindingConfig;
-        use crate::gui::context::{ContextId, ContextManager};
-        use crate::model::Model;
-        use crate::pager::side_by_side::DiffViewState;
-
-        let backend = TestBackend::new(140, 1);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let theme = Theme::default();
-        let mut ctx_mgr = ContextManager::new();
-        ctx_mgr.set_active(ContextId::Commits);
-        let diff_view = DiffViewState::new();
-        let model = Model::default();
-
-        let mut keybindings = KeybindingConfig::default();
-        keybindings.commits.open_log_menu = "<c-s>".into();
-
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 140, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..140)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+s filter branch"),
-            "Expected 'ctrl+s filter branch' in status bar, got: {}",
-            content
-        );
-
-        // Remap to 'f'
-        keybindings.commits.open_log_menu = "f".into();
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 140, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content_f: String = (0..140)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content_f.contains("f filter branch"),
-            "Expected 'f filter branch' in status bar, got: {}",
-            content_f
-        );
-    }
-
-    #[test]
-    fn status_bar_reflects_toggle_working_tree_and_head() {
-        use crate::config::KeybindingConfig;
-        use crate::gui::context::{ContextId, ContextManager};
-        use crate::model::Model;
-        use crate::pager::side_by_side::DiffViewState;
-
-        let backend = TestBackend::new(160, 1);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let theme = Theme::default();
-        let mut ctx_mgr = ContextManager::new();
-        let diff_view = DiffViewState::new();
-        let model = Model::default();
-        let keybindings = KeybindingConfig::default();
-
-        // 1. Files context -> shows "ctrl+g head"
-        ctx_mgr.set_active(ContextId::Files);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+g head"),
-            "Expected 'ctrl+g head' in status bar for Files, got: {}",
-            content
-        );
-
-        // 2. Commits context -> shows "ctrl+g files"
-        ctx_mgr.set_active(ContextId::Commits);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+g files"),
-            "Expected 'ctrl+g files' in status bar for Commits, got: {}",
-            content
-        );
-
-        // 3. CommitFiles context -> shows "ctrl+g files"
-        ctx_mgr.set_active(ContextId::CommitFiles);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+g files"),
-            "Expected 'ctrl+g files' in status bar for CommitFiles, got: {}",
-            content
-        );
-
-        // 4. Diff-focused mode: Files context -> shows "ctrl+g head"
-        ctx_mgr.set_active(ContextId::Files);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    true,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+g head"),
-            "Expected 'ctrl+g head' in diff-focused status bar for Files, got: {}",
-            content
-        );
-
-        // 5. Diff-focused mode: Commits context -> shows "ctrl+g files"
-        ctx_mgr.set_active(ContextId::Commits);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    true,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+g files"),
-            "Expected 'ctrl+g files' in diff-focused status bar for Commits, got: {}",
-            content
-        );
-
-        // 6. Custom keybinding (e.g. <c-t>) -> shows "ctrl+t head" and "ctrl+t files"
-        let mut custom_kb = KeybindingConfig::default();
-        custom_kb.universal.toggle_working_tree_and_head = "<c-t>".into();
-        ctx_mgr.set_active(ContextId::Files);
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &custom_kb,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("ctrl+t head"),
-            "Expected 'ctrl+t head' with custom keybinding, got: {}",
-            content
-        );
-
-        // 7. returnToCockpit keybinding (e.g. g) -> shows "g cockpit"
-        let mut cockpit_kb = KeybindingConfig::default();
-        cockpit_kb.universal.return_to_cockpit = "g".into();
-        terminal
-            .draw(|f| {
-                super::render_status_bar(
-                    f,
-                    Rect::new(0, 0, 160, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &cockpit_kb,
-                    false,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let content: String = (0..160)
-            .map(|x| buf.cell((x, 0)).unwrap().symbol())
-            .collect();
-        assert!(
-            content.contains("g cockpit"),
-            "Expected 'g cockpit' with returnToCockpit keybinding, got: {}",
-            content
-        );
-    }
-
-    #[test]
-    fn command_log_is_hidden_when_main_panel_is_absent() {
-        assert_eq!(command_log_geometry(Rect::default(), 1), None);
-    }
-
-    #[test]
-    fn command_log_visible_lines_are_clamped_to_short_main_panel() {
-        let (rect, visible_lines) =
-            command_log_geometry(Rect::new(10, 4, 80, 2), 5).expect("log should fit");
-
-        assert_eq!(visible_lines, 1);
-        assert_eq!(rect, Rect::new(40, 4, 50, 3));
-    }
-
-    #[test]
-    fn long_error_message_popup_renders_in_short_terminal() {
-        let backend = TestBackend::new(40, 8);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let message = (0..40)
-            .map(|i| {
-                format!(
-                    "hint: divergent branches need reconciliation before pull can continue ({i})"
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        let popup = PopupState::Message {
-            title: "Pull error".to_string(),
-            message,
-            kind: MessageKind::Error,
-        };
-
-        terminal
-            .draw(|frame| {
-                render_popup(
-                    frame,
-                    &popup,
-                    Rect::new(0, 0, 40, 8),
-                    0,
-                    &Theme::default(),
-                    false,
-                    false,
-                );
-            })
-            .expect("long popup message should render without panicking");
-    }
-
-    fn sample_menu() -> PopupState {
-        PopupState::Menu {
-            title: "Copy".to_string(),
-            items: vec![
-                MenuItem {
-                    label: "commit hash".to_string(),
-                    description: String::new(),
-                    key: Some("c".to_string()),
-                    action: None,
-                },
-                MenuItem {
-                    label: "commit message".to_string(),
-                    description: String::new(),
-                    key: Some("m".to_string()),
-                    action: None,
-                },
-                MenuItem {
-                    label: "author name".to_string(),
-                    description: String::new(),
-                    key: Some("a".to_string()),
-                    action: None,
-                },
-            ],
-            selected: 0,
-            loading_index: None,
-        }
-    }
-
-    #[test]
-    fn menu_item_at_hits_first_and_second_options() {
-        let area = Rect::new(0, 0, 80, 24);
-        let popup = sample_menu();
-        // height = 3 items + 2 borders = 5; y = (24-5)/2 = 9; list starts at y+1 = 10
-        let x = (area
-            .width
-            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
-            / 2
-            + 2;
-        assert_eq!(menu_item_at(&popup, area, x, 10), Some(0));
-        assert_eq!(menu_item_at(&popup, area, x, 11), Some(1));
-        assert_eq!(menu_item_at(&popup, area, x, 12), Some(2));
-        assert_eq!(menu_item_at(&popup, area, x, 9), None); // border
-        assert_eq!(menu_item_at(&popup, area, x, 13), None); // below
-    }
-
-    #[test]
-    fn checklist_item_at_skips_search_and_separator() {
-        let area = Rect::new(0, 0, 80, 30);
-        let popup = PopupState::Checklist {
-            title: "Pick".to_string(),
-            items: vec![
-                ChecklistItem {
-                    label: "one".to_string(),
-                    checked: false,
-                    is_free_entry: false,
-                },
-                ChecklistItem {
-                    label: "two".to_string(),
-                    checked: true,
-                    is_free_entry: false,
-                },
-            ],
-            selected: 0,
-            search_textarea: crate::gui::popup::make_checklist_search_textarea(),
-            free_entry_category: None,
-            on_confirm: Box::new(|_gui, _ids| Ok(())),
-        };
-        // height = max(8, 2+6)=8; y=(30-8)/2=11; list_start=y+1+2=14
-        let x = (area
-            .width
-            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
-            / 2
-            + 2;
-        assert_eq!(checklist_item_at(&popup, area, x, 14), Some(0));
-        assert_eq!(checklist_item_at(&popup, area, x, 15), Some(1));
-        assert_eq!(checklist_item_at(&popup, area, x, 12), None); // search row
-        assert_eq!(checklist_item_at(&popup, area, x, 13), None); // separator
-    }
-
-    #[test]
-    fn list_panel_renders_scrollbar_when_scrollable() {
-        use ratatui::widgets::{Block, Borders, ListItem};
-        let backend = TestBackend::new(30, 8);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let theme = Theme::default();
-        let items: Vec<ListItem> = (0..20)
-            .map(|i| ListItem::new(format!("item {}", i)))
-            .collect();
-        let rect = Rect::new(0, 0, 30, 8);
-        let block = Block::default().borders(Borders::ALL);
-        let mut scroll_offset = 0;
-
-        terminal
-            .draw(|f| {
-                super::render_list_with_range_raw(
-                    f,
-                    rect,
-                    block,
-                    items,
-                    0,
-                    true,
-                    &theme,
-                    None,
-                    &mut scroll_offset,
-                    true,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        let right_x = 29;
-        let mut found_thumb = false;
-        for y in 0..8 {
-            if buf.cell((right_x, y)).map(|c| c.symbol()) == Some("▐") {
-                found_thumb = true;
-                break;
-            }
-        }
-        assert!(
-            found_thumb,
-            "Scrollbar thumb '▐' should be rendered on right border when list is scrollable"
-        );
-    }
-
-    #[test]
-    fn list_panel_does_not_render_scrollbar_when_content_fits() {
-        use ratatui::widgets::{Block, Borders, ListItem};
-        let backend = TestBackend::new(30, 8);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let theme = Theme::default();
-        let items: Vec<ListItem> = (0..3)
-            .map(|i| ListItem::new(format!("item {}", i)))
-            .collect();
-        let rect = Rect::new(0, 0, 30, 8);
-        let block = Block::default().borders(Borders::ALL);
-        let mut scroll_offset = 0;
-
-        terminal
-            .draw(|f| {
-                super::render_list_with_range_raw(
-                    f,
-                    rect,
-                    block,
-                    items,
-                    0,
-                    true,
-                    &theme,
-                    None,
-                    &mut scroll_offset,
-                    true,
-                );
-            })
-            .unwrap();
-
-        let buf = terminal.backend().buffer();
-        for y in 0..8 {
-            for x in 0..30 {
-                assert_ne!(
-                    buf.cell((x, y)).map(|c| c.symbol()),
-                    Some("▐"),
-                    "Scrollbar should NOT be rendered when all content fits"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn format_key_hint_normalizes_standard_and_custom_bindings() {
-        use super::format_key_hint;
-
-        assert_eq!(format_key_hint("<c-s>"), "ctrl+s");
-        assert_eq!(format_key_hint("<c-l>"), "ctrl+l");
-        assert_eq!(format_key_hint("<c-L>"), "ctrl+l");
-        assert_eq!(format_key_hint("ctrl+l"), "ctrl+l");
-        assert_eq!(format_key_hint("<space>"), "space");
-        assert_eq!(format_key_hint("<esc>"), "esc");
-        assert_eq!(format_key_hint("<enter>"), "enter");
-        assert_eq!(format_key_hint("c-s"), "ctrl+s");
-        assert_eq!(format_key_hint("alt-x"), "alt+x");
-        assert_eq!(format_key_hint("shift-tab"), "shift+tab");
-    }
-
-    #[test]
-    fn render_status_bar_displays_filter_branch_and_esc_reset() {
-        use super::{DiffViewState, render_status_bar};
-        use crate::config::KeybindingConfig;
-        use crate::gui::context::{ContextId, ContextManager};
-        use crate::model::Model;
-
-        let backend = TestBackend::new(120, 2);
-        let mut terminal = Terminal::new(backend).expect("test terminal");
-        let model = Model::default();
-        let keybindings = KeybindingConfig::default();
-        let mut ctx_mgr = ContextManager::new();
-        ctx_mgr.set_active(ContextId::Commits);
-        let diff_view = DiffViewState::new();
-        let theme = Theme::default();
-
-        // With active filters
-        terminal
-            .draw(|frame| {
-                render_status_bar(
-                    frame,
-                    Rect::new(0, 0, 120, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    true,
-                );
-            })
-            .expect("should render status bar with active filters");
-
-        let buffer = terminal.backend().buffer();
-        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
-        assert!(
-            content.contains("reset filter"),
-            "expected 'reset filter' in status bar: {}",
-            content
-        );
-        assert!(
-            content.contains("filter branch"),
-            "expected 'filter branch' in status bar: {}",
-            content
-        );
-
-        // Without active filters
-        terminal
-            .draw(|frame| {
-                render_status_bar(
-                    frame,
-                    Rect::new(0, 0, 120, 1),
-                    &ctx_mgr,
-                    &diff_view,
-                    &theme,
-                    &model,
-                    false,
-                    false,
-                    &keybindings,
-                    false,
-                );
-            })
-            .expect("should render status bar without active filters");
-
-        let buffer = terminal.backend().buffer();
-        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
-        assert!(
-            !content.contains("reset filter"),
-            "did not expect 'reset filter' when no filters active: {}",
-            content
-        );
-        assert!(
-            content.contains("filter branch"),
-            "expected 'filter branch' in status bar: {}",
-            content
-        );
-    }
 }
 
 /// Build a window title like " 4 Commit Files (abc1234 feat: some change) ".
@@ -2871,7 +2061,7 @@ fn render_list_with_range_raw(
             let idx = i + offset;
             if is_active && idx == selected {
                 item.style(theme.selected_line)
-            } else if is_active && range.map_or(false, |(lo, hi)| idx >= lo && idx <= hi) {
+            } else if is_active && range.is_some_and(|(lo, hi)| idx >= lo && idx <= hi) {
                 item.style(Style::default().bg(theme.selected_bg))
             } else {
                 item
@@ -4175,21 +3365,22 @@ pub fn render_popup(
             frame.render_widget(list, popup_rect);
 
             // Show disabled item description only when the selected item is disabled
-            if let Some(selected_item) = items.get(*selected) {
-                if selected_item.action.is_none() && !selected_item.description.is_empty() {
-                    let hint_y = popup_rect.y + popup_rect.height;
-                    if hint_y < area.height {
-                        let hint_text = format!("Disabled: {}", selected_item.description);
-                        let hint_rect = Rect::new(popup_rect.x, hint_y, popup_rect.width, 1);
-                        frame.render_widget(Clear, hint_rect);
-                        frame.render_widget(
-                            Paragraph::new(Span::styled(
-                                hint_text,
-                                Style::default().fg(theme.text_dimmed),
-                            )),
-                            hint_rect,
-                        );
-                    }
+            if let Some(selected_item) = items.get(*selected)
+                && selected_item.action.is_none()
+                && !selected_item.description.is_empty()
+            {
+                let hint_y = popup_rect.y + popup_rect.height;
+                if hint_y < area.height {
+                    let hint_text = format!("Disabled: {}", selected_item.description);
+                    let hint_rect = Rect::new(popup_rect.x, hint_y, popup_rect.width, 1);
+                    frame.render_widget(Clear, hint_rect);
+                    frame.render_widget(
+                        Paragraph::new(Span::styled(
+                            hint_text,
+                            Style::default().fg(theme.text_dimmed),
+                        )),
+                        hint_rect,
+                    );
                 }
             }
         }
@@ -4428,7 +3619,7 @@ pub fn render_popup(
             );
             let ta_width = inner.width.saturating_sub(prefix_width);
             let ta_rect = Rect::new(inner.x + prefix_width, inner.y, ta_width, 1);
-            frame.render_widget(&*search_textarea, ta_rect);
+            frame.render_widget(search_textarea, ta_rect);
 
             // Separator
             let sep_area = Rect::new(inner.x, inner.y + 1, inner.width, 1);
@@ -4518,22 +3709,21 @@ pub fn render_popup(
                         let mut s = Vec::new();
                         let mut cursor = 0usize;
                         for (start, end) in ranges {
-                            if start > cursor {
-                                if let Some(chunk) = text.get(cursor..start) {
-                                    if !chunk.is_empty() {
-                                        s.push(Span::styled(chunk.to_string(), base));
-                                    }
-                                }
+                            if start > cursor
+                                && let Some(chunk) = text.get(cursor..start)
+                                && !chunk.is_empty()
+                            {
+                                s.push(Span::styled(chunk.to_string(), base));
                             }
                             if let Some(chunk) = text.get(start..end) {
                                 s.push(Span::styled(chunk.to_string(), highlight_style));
                             }
                             cursor = end;
                         }
-                        if let Some(rest) = text.get(cursor..) {
-                            if !rest.is_empty() {
-                                s.push(Span::styled(rest.to_string(), base));
-                            }
+                        if let Some(rest) = text.get(cursor..)
+                            && !rest.is_empty()
+                        {
+                            s.push(Span::styled(rest.to_string(), base));
                         }
                         s
                     };
@@ -4860,22 +4050,21 @@ fn render_list_picker(
                     let base_style = Style::default().fg(base_fg);
                     let mut cursor = 0usize;
                     for (s, e) in ranges {
-                        if s > cursor {
-                            if let Some(chunk) = label.get(cursor..s) {
-                                if !chunk.is_empty() {
-                                    spans.push(Span::styled(chunk.to_string(), base_style));
-                                }
-                            }
+                        if s > cursor
+                            && let Some(chunk) = label.get(cursor..s)
+                            && !chunk.is_empty()
+                        {
+                            spans.push(Span::styled(chunk.to_string(), base_style));
                         }
                         if let Some(chunk) = label.get(s..e) {
                             spans.push(Span::styled(chunk.to_string(), match_style));
                         }
                         cursor = e;
                     }
-                    if let Some(rest) = label.get(cursor..) {
-                        if !rest.is_empty() {
-                            spans.push(Span::styled(rest.to_string(), base_style));
-                        }
+                    if let Some(rest) = label.get(cursor..)
+                        && !rest.is_empty()
+                    {
+                        spans.push(Span::styled(rest.to_string(), base_style));
                     }
                 }
             } else {
@@ -5001,4 +4190,813 @@ fn render_commit_details_panel(
         compact,
         scroll,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        checklist_item_at, command_log_geometry, format_key_hint, menu_item_at, render_popup,
+    };
+    use crate::config::Theme;
+    use crate::gui::popup::{ChecklistItem, MenuItem, MessageKind, PopupState};
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Rect;
+
+    fn render_tab(
+        model: &crate::model::Model,
+        context: super::ContextId,
+        mode: super::ScreenMode,
+    ) -> Vec<String> {
+        let mut terminal = Terminal::new(TestBackend::new(160, 40)).unwrap();
+        let mut contexts = super::ContextManager::new();
+        contexts.set_active(context);
+        terminal
+            .draw(|frame| {
+                super::render(
+                    frame,
+                    model,
+                    &mut contexts,
+                    &super::LayoutState::default(),
+                    &PopupState::None,
+                    &crate::config::AppConfig {
+                        debug: false,
+                        version: String::new(),
+                        user_config: Default::default(),
+                        app_state: Default::default(),
+                        config_dir: Default::default(),
+                        state_dir: Default::default(),
+                        state_path: Default::default(),
+                    },
+                    &Theme::default(),
+                    &mut super::DiffViewState::default(),
+                    &mut super::presentation::commits::CommitListCache::default(),
+                    mode,
+                    false,
+                    &[],
+                    &Default::default(),
+                    false,
+                    None,
+                    None,
+                    &[],
+                    false,
+                    &[],
+                    false,
+                    &[],
+                    &Default::default(),
+                    "",
+                    "",
+                    "",
+                    "",
+                    super::ContextId::Commits,
+                    0,
+                    None,
+                    false,
+                    &[],
+                    None,
+                    false,
+                    false,
+                    &Default::default(),
+                    &Default::default(),
+                    &mut 0,
+                    &mut String::new(),
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                );
+            })
+            .unwrap();
+        terminal
+            .backend()
+            .buffer()
+            .content
+            .chunks(160)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect()
+    }
+
+    fn sample_worktree(
+        path: &str,
+        branch: &str,
+        current: bool,
+        main: bool,
+    ) -> crate::model::Worktree {
+        crate::model::Worktree {
+            path: path.into(),
+            branch: branch.into(),
+            hash: String::new(),
+            is_current: current,
+            is_main: main,
+        }
+    }
+
+    #[test]
+    fn worktrees_render_names_branches_and_main_label_in_every_mode() {
+        let model = crate::model::Model {
+            worktrees: vec![
+                sample_worktree("/repos/quarta", "feat/main", true, true),
+                sample_worktree(
+                    "/repos/worktree-pfparser",
+                    "experiment/parser",
+                    false,
+                    false,
+                ),
+            ],
+            ..Default::default()
+        };
+        for mode in [
+            super::ScreenMode::Normal,
+            super::ScreenMode::Half,
+            super::ScreenMode::Full,
+        ] {
+            let rows = render_tab(&model, super::ContextId::Worktrees, mode);
+            let main = rows.iter().find(|row| row.contains("* quarta")).unwrap();
+            assert!(main.contains("* quarta"));
+            assert!(main.contains("feat/main (main worktree)"));
+            assert!(!main.contains("/repos/"));
+            let linked = rows
+                .iter()
+                .find(|row| row.contains("worktree-pfparser experiment/parser"))
+                .unwrap();
+            assert!(linked.contains("worktree-pfparser experiment/parser"));
+            assert!(!linked.contains("(main worktree)"));
+            assert!(!linked.contains("/repos/"));
+            assert_eq!(main.find("feat/main"), linked.find("experiment/parser"));
+        }
+    }
+
+    #[test]
+    fn worktree_columns_use_unicode_display_width() {
+        let model = crate::model::Model {
+            worktrees: vec![
+                sample_worktree("/repos/树", "branch-one", false, false),
+                sample_worktree("/repos/abc", "branch-two", true, false),
+            ],
+            ..Default::default()
+        };
+        let rows = render_tab(&model, super::ContextId::Worktrees, super::ScreenMode::Full);
+        assert!(rows.iter().any(|row| row.contains("树   branch-one")));
+        assert!(rows.iter().any(|row| row.contains("* abc branch-two")));
+    }
+
+    #[test]
+    fn submodules_render_in_every_mode_and_empty_lists_stay_blank() {
+        let mut model = crate::model::Model::default();
+        for mode in [
+            super::ScreenMode::Normal,
+            super::ScreenMode::Half,
+            super::ScreenMode::Full,
+        ] {
+            let rows = render_tab(&model, super::ContextId::Submodules, mode);
+            assert!(!rows.join("\n").contains("(no submodules)"));
+        }
+        model.submodules.push(crate::git::submodule::Submodule {
+            name: "shared-lib".into(),
+            path: "vendor/shared-lib".into(),
+            url: String::new(),
+        });
+        for mode in [
+            super::ScreenMode::Normal,
+            super::ScreenMode::Half,
+            super::ScreenMode::Full,
+        ] {
+            let rows = render_tab(&model, super::ContextId::Submodules, mode);
+            assert!(
+                rows.iter()
+                    .any(|row| row.contains("shared-lib vendor/shared-lib"))
+            );
+        }
+    }
+
+    #[test]
+    fn format_key_hint_formats_modifiers_and_preserves_plain() {
+        assert_eq!(format_key_hint("<c-s>"), "ctrl+s");
+        assert_eq!(format_key_hint("<C-s>"), "ctrl+s");
+        assert_eq!(format_key_hint("<ctrl-s>"), "ctrl+s");
+        assert_eq!(format_key_hint("<c+s>"), "ctrl+s");
+        assert_eq!(format_key_hint("Ctrl+S"), "ctrl+s");
+        assert_eq!(format_key_hint("ctrl-s"), "ctrl+s");
+        assert_eq!(format_key_hint("<c-l>"), "ctrl+l");
+        assert_eq!(format_key_hint("<c-f>"), "ctrl+f");
+        assert_eq!(format_key_hint("<a-h>"), "alt+h");
+        assert_eq!(format_key_hint("<alt-h>"), "alt+h");
+        assert_eq!(format_key_hint("<s-f>"), "shift+f");
+        assert_eq!(format_key_hint("<shift-f>"), "shift+f");
+        assert_eq!(format_key_hint("<shift-tab>"), "shift+tab");
+        assert_eq!(format_key_hint("<space>"), "space");
+        assert_eq!(format_key_hint("<Space>"), "space");
+        assert_eq!(format_key_hint("<Enter>"), "enter");
+        assert_eq!(format_key_hint("<escape>"), "esc");
+        assert_eq!(format_key_hint("f"), "f");
+        assert_eq!(format_key_hint("F"), "F");
+        assert_eq!(format_key_hint("ctrl+s"), "ctrl+s");
+        assert_eq!(format_key_hint(""), "");
+    }
+
+    #[test]
+    fn status_bar_reflects_dynamic_open_log_menu_keybinding() {
+        use crate::config::KeybindingConfig;
+        use crate::gui::context::{ContextId, ContextManager};
+        use crate::model::Model;
+        use crate::pager::side_by_side::DiffViewState;
+
+        let backend = TestBackend::new(140, 1);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let theme = Theme::default();
+        let mut ctx_mgr = ContextManager::new();
+        ctx_mgr.set_active(ContextId::Commits);
+        let diff_view = DiffViewState::new();
+        let model = Model::default();
+
+        let mut keybindings = KeybindingConfig::default();
+        keybindings.commits.open_log_menu = "<c-s>".into();
+
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 140, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..140)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+s filter branch"),
+            "Expected 'ctrl+s filter branch' in status bar, got: {}",
+            content
+        );
+
+        // Remap to 'f'
+        keybindings.commits.open_log_menu = "f".into();
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 140, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content_f: String = (0..140)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content_f.contains("f filter branch"),
+            "Expected 'f filter branch' in status bar, got: {}",
+            content_f
+        );
+    }
+
+    #[test]
+    fn status_bar_reflects_toggle_working_tree_and_head() {
+        use crate::config::KeybindingConfig;
+        use crate::gui::context::{ContextId, ContextManager};
+        use crate::model::Model;
+        use crate::pager::side_by_side::DiffViewState;
+
+        let backend = TestBackend::new(160, 1);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let theme = Theme::default();
+        let mut ctx_mgr = ContextManager::new();
+        let diff_view = DiffViewState::new();
+        let model = Model::default();
+        let keybindings = KeybindingConfig::default();
+
+        // 1. Files context -> shows "ctrl+g head"
+        ctx_mgr.set_active(ContextId::Files);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+g head"),
+            "Expected 'ctrl+g head' in status bar for Files, got: {}",
+            content
+        );
+
+        // 2. Commits context -> shows "ctrl+g files"
+        ctx_mgr.set_active(ContextId::Commits);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+g files"),
+            "Expected 'ctrl+g files' in status bar for Commits, got: {}",
+            content
+        );
+
+        // 3. CommitFiles context -> shows "ctrl+g files"
+        ctx_mgr.set_active(ContextId::CommitFiles);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+g files"),
+            "Expected 'ctrl+g files' in status bar for CommitFiles, got: {}",
+            content
+        );
+
+        // 4. Diff-focused mode: Files context -> shows "ctrl+g head"
+        ctx_mgr.set_active(ContextId::Files);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    true,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+g head"),
+            "Expected 'ctrl+g head' in diff-focused status bar for Files, got: {}",
+            content
+        );
+
+        // 5. Diff-focused mode: Commits context -> shows "ctrl+g files"
+        ctx_mgr.set_active(ContextId::Commits);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    true,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+g files"),
+            "Expected 'ctrl+g files' in diff-focused status bar for Commits, got: {}",
+            content
+        );
+
+        // 6. Custom keybinding (e.g. <c-t>) -> shows "ctrl+t head" and "ctrl+t files"
+        let mut custom_kb = KeybindingConfig::default();
+        custom_kb.universal.toggle_working_tree_and_head = "<c-t>".into();
+        ctx_mgr.set_active(ContextId::Files);
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &custom_kb,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("ctrl+t head"),
+            "Expected 'ctrl+t head' with custom keybinding, got: {}",
+            content
+        );
+
+        // 7. returnToCockpit keybinding (e.g. g) -> shows "g cockpit"
+        let mut cockpit_kb = KeybindingConfig::default();
+        cockpit_kb.universal.return_to_cockpit = "g".into();
+        terminal
+            .draw(|f| {
+                super::render_status_bar(
+                    f,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &cockpit_kb,
+                    false,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let content: String = (0..160)
+            .map(|x| buf.cell((x, 0)).unwrap().symbol())
+            .collect();
+        assert!(
+            content.contains("g cockpit"),
+            "Expected 'g cockpit' with returnToCockpit keybinding, got: {}",
+            content
+        );
+    }
+
+    #[test]
+    fn command_log_is_hidden_when_main_panel_is_absent() {
+        assert_eq!(command_log_geometry(Rect::default(), 1), None);
+    }
+
+    #[test]
+    fn command_log_visible_lines_are_clamped_to_short_main_panel() {
+        let (rect, visible_lines) =
+            command_log_geometry(Rect::new(10, 4, 80, 2), 5).expect("log should fit");
+
+        assert_eq!(visible_lines, 1);
+        assert_eq!(rect, Rect::new(40, 4, 50, 3));
+    }
+
+    #[test]
+    fn long_error_message_popup_renders_in_short_terminal() {
+        let backend = TestBackend::new(40, 8);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let message = (0..40)
+            .map(|i| {
+                format!(
+                    "hint: divergent branches need reconciliation before pull can continue ({i})"
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let popup = PopupState::Message {
+            title: "Pull error".to_string(),
+            message,
+            kind: MessageKind::Error,
+        };
+
+        terminal
+            .draw(|frame| {
+                render_popup(
+                    frame,
+                    &popup,
+                    Rect::new(0, 0, 40, 8),
+                    0,
+                    &Theme::default(),
+                    false,
+                    false,
+                );
+            })
+            .expect("long popup message should render without panicking");
+    }
+
+    fn sample_menu() -> PopupState {
+        PopupState::Menu {
+            title: "Copy".to_string(),
+            items: vec![
+                MenuItem {
+                    label: "commit hash".to_string(),
+                    description: String::new(),
+                    key: Some("c".to_string()),
+                    action: None,
+                },
+                MenuItem {
+                    label: "commit message".to_string(),
+                    description: String::new(),
+                    key: Some("m".to_string()),
+                    action: None,
+                },
+                MenuItem {
+                    label: "author name".to_string(),
+                    description: String::new(),
+                    key: Some("a".to_string()),
+                    action: None,
+                },
+            ],
+            selected: 0,
+            loading_index: None,
+        }
+    }
+
+    #[test]
+    fn menu_item_at_hits_first_and_second_options() {
+        let area = Rect::new(0, 0, 80, 24);
+        let popup = sample_menu();
+        // height = 3 items + 2 borders = 5; y = (24-5)/2 = 9; list starts at y+1 = 10
+        let x = (area
+            .width
+            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
+            / 2
+            + 2;
+        assert_eq!(menu_item_at(&popup, area, x, 10), Some(0));
+        assert_eq!(menu_item_at(&popup, area, x, 11), Some(1));
+        assert_eq!(menu_item_at(&popup, area, x, 12), Some(2));
+        assert_eq!(menu_item_at(&popup, area, x, 9), None); // border
+        assert_eq!(menu_item_at(&popup, area, x, 13), None); // below
+    }
+
+    #[test]
+    fn checklist_item_at_skips_search_and_separator() {
+        let area = Rect::new(0, 0, 80, 30);
+        let popup = PopupState::Checklist {
+            title: "Pick".to_string(),
+            items: vec![
+                ChecklistItem {
+                    label: "one".to_string(),
+                    checked: false,
+                    is_free_entry: false,
+                },
+                ChecklistItem {
+                    label: "two".to_string(),
+                    checked: true,
+                    is_free_entry: false,
+                },
+            ],
+            selected: 0,
+            search_textarea: crate::gui::popup::make_checklist_search_textarea(),
+            free_entry_category: None,
+            on_confirm: Box::new(|_gui, _ids| Ok(())),
+        };
+        // height = max(8, 2+6)=8; y=(30-8)/2=11; list_start=y+1+2=14
+        let x = (area
+            .width
+            .saturating_sub((area.width * 60 / 100).min(60).max(30)))
+            / 2
+            + 2;
+        assert_eq!(checklist_item_at(&popup, area, x, 14), Some(0));
+        assert_eq!(checklist_item_at(&popup, area, x, 15), Some(1));
+        assert_eq!(checklist_item_at(&popup, area, x, 12), None); // search row
+        assert_eq!(checklist_item_at(&popup, area, x, 13), None); // separator
+    }
+
+    #[test]
+    fn list_panel_renders_scrollbar_when_scrollable() {
+        use ratatui::widgets::{Block, Borders, ListItem};
+        let backend = TestBackend::new(30, 8);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let theme = Theme::default();
+        let items: Vec<ListItem> = (0..20)
+            .map(|i| ListItem::new(format!("item {}", i)))
+            .collect();
+        let rect = Rect::new(0, 0, 30, 8);
+        let block = Block::default().borders(Borders::ALL);
+        let mut scroll_offset = 0;
+
+        terminal
+            .draw(|f| {
+                super::render_list_with_range_raw(
+                    f,
+                    rect,
+                    block,
+                    items,
+                    0,
+                    true,
+                    &theme,
+                    None,
+                    &mut scroll_offset,
+                    true,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        let right_x = 29;
+        let mut found_thumb = false;
+        for y in 0..8 {
+            if buf.cell((right_x, y)).map(|c| c.symbol()) == Some("▐") {
+                found_thumb = true;
+                break;
+            }
+        }
+        assert!(
+            found_thumb,
+            "Scrollbar thumb '▐' should be rendered on right border when list is scrollable"
+        );
+    }
+
+    #[test]
+    fn list_panel_does_not_render_scrollbar_when_content_fits() {
+        use ratatui::widgets::{Block, Borders, ListItem};
+        let backend = TestBackend::new(30, 8);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let theme = Theme::default();
+        let items: Vec<ListItem> = (0..3)
+            .map(|i| ListItem::new(format!("item {}", i)))
+            .collect();
+        let rect = Rect::new(0, 0, 30, 8);
+        let block = Block::default().borders(Borders::ALL);
+        let mut scroll_offset = 0;
+
+        terminal
+            .draw(|f| {
+                super::render_list_with_range_raw(
+                    f,
+                    rect,
+                    block,
+                    items,
+                    0,
+                    true,
+                    &theme,
+                    None,
+                    &mut scroll_offset,
+                    true,
+                );
+            })
+            .unwrap();
+
+        let buf = terminal.backend().buffer();
+        for y in 0..8 {
+            for x in 0..30 {
+                assert_ne!(
+                    buf.cell((x, y)).map(|c| c.symbol()),
+                    Some("▐"),
+                    "Scrollbar should NOT be rendered when all content fits"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn format_key_hint_normalizes_standard_and_custom_bindings() {
+        use super::format_key_hint;
+
+        assert_eq!(format_key_hint("<c-s>"), "ctrl+s");
+        assert_eq!(format_key_hint("<c-l>"), "ctrl+l");
+        assert_eq!(format_key_hint("<c-L>"), "ctrl+l");
+        assert_eq!(format_key_hint("ctrl+l"), "ctrl+l");
+        assert_eq!(format_key_hint("<space>"), "space");
+        assert_eq!(format_key_hint("<esc>"), "esc");
+        assert_eq!(format_key_hint("<enter>"), "enter");
+        assert_eq!(format_key_hint("c-s"), "ctrl+s");
+        assert_eq!(format_key_hint("alt-x"), "alt+x");
+        assert_eq!(format_key_hint("shift-tab"), "shift+tab");
+    }
+
+    #[test]
+    fn render_status_bar_displays_filter_branch_and_esc_reset() {
+        use super::{DiffViewState, render_status_bar};
+        use crate::config::KeybindingConfig;
+        use crate::gui::context::{ContextId, ContextManager};
+        use crate::model::Model;
+
+        let backend = TestBackend::new(120, 2);
+        let mut terminal = Terminal::new(backend).expect("test terminal");
+        let model = Model::default();
+        let keybindings = KeybindingConfig::default();
+        let mut ctx_mgr = ContextManager::new();
+        ctx_mgr.set_active(ContextId::Commits);
+        let diff_view = DiffViewState::new();
+        let theme = Theme::default();
+
+        // With active filters
+        terminal
+            .draw(|frame| {
+                render_status_bar(
+                    frame,
+                    Rect::new(0, 0, 120, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    true,
+                );
+            })
+            .expect("should render status bar with active filters");
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(
+            content.contains("reset filter"),
+            "expected 'reset filter' in status bar: {}",
+            content
+        );
+        assert!(
+            content.contains("filter branch"),
+            "expected 'filter branch' in status bar: {}",
+            content
+        );
+
+        // Without active filters
+        terminal
+            .draw(|frame| {
+                render_status_bar(
+                    frame,
+                    Rect::new(0, 0, 120, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    false,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .expect("should render status bar without active filters");
+
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        assert!(
+            !content.contains("reset filter"),
+            "did not expect 'reset filter' when no filters active: {}",
+            content
+        );
+        assert!(
+            content.contains("filter branch"),
+            "expected 'filter branch' in status bar: {}",
+            content
+        );
+    }
 }

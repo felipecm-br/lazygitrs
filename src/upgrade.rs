@@ -174,12 +174,11 @@ fn resolve_install_path() -> Result<PathBuf> {
     let exe = env::current_exe().context("failed to resolve current executable")?;
     let canonical = exe.canonicalize().unwrap_or(exe);
 
-    if is_dev_build(&canonical) {
-        if let Some(from_path) = find_binary_on_path(BINARY_NAME) {
-            if from_path.canonicalize().ok().as_ref() != Some(&canonical) {
-                return Ok(from_path.canonicalize().unwrap_or(from_path));
-            }
-        }
+    if is_dev_build(&canonical)
+        && let Some(from_path) = find_binary_on_path(BINARY_NAME)
+        && from_path.canonicalize().ok().as_ref() != Some(&canonical)
+    {
+        return Ok(from_path.canonicalize().unwrap_or(from_path));
     }
 
     Ok(canonical)

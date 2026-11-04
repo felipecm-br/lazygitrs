@@ -74,21 +74,21 @@ fn validate_agent_context(ctx: &AgentContext) -> Result<(), String> {
                     ann.summary, file.path
                 ));
             }
-            if let Some((start, end)) = ann.new_range {
-                if start == 0 || end < start {
-                    return Err(format!(
-                        "Annotation '{}' in '{}' has invalid 'newRange': [{}, {}]. Line numbers must be >= 1 and end >= start.",
-                        ann.summary, file.path, start, end
-                    ));
-                }
+            if let Some((start, end)) = ann.new_range
+                && (start == 0 || end < start)
+            {
+                return Err(format!(
+                    "Annotation '{}' in '{}' has invalid 'newRange': [{}, {}]. Line numbers must be >= 1 and end >= start.",
+                    ann.summary, file.path, start, end
+                ));
             }
-            if let Some((start, end)) = ann.old_range {
-                if start == 0 || end < start {
-                    return Err(format!(
-                        "Annotation '{}' in '{}' has invalid 'oldRange': [{}, {}]. Line numbers must be >= 1 and end >= start.",
-                        ann.summary, file.path, start, end
-                    ));
-                }
+            if let Some((start, end)) = ann.old_range
+                && (start == 0 || end < start)
+            {
+                return Err(format!(
+                    "Annotation '{}' in '{}' has invalid 'oldRange': [{}, {}]. Line numbers must be >= 1 and end >= start.",
+                    ann.summary, file.path, start, end
+                ));
             }
         }
     }
@@ -196,7 +196,7 @@ fn existing_instance_owns_workspace(repo_path: &std::path::Path) -> Option<u16> 
 
     let canonical =
         |p: &str| std::fs::canonicalize(p).unwrap_or_else(|_| std::path::PathBuf::from(p));
-    if canonical(ws) == canonical(&repo_path.to_string_lossy().to_string()) {
+    if canonical(ws) == canonical(repo_path.to_string_lossy().as_ref()) {
         Some(port)
     } else {
         None
@@ -268,20 +268,18 @@ pub fn spawn_server(
                 let port_file = state.repo_path.join(".lazygitrs.port");
                 let mut should_write = true;
 
-                if let Ok(existing_port) = std::fs::read_to_string(&port_file) {
-                    if let Ok(port_num) = existing_port.trim().parse::<u16>() {
-                        if std::net::TcpStream::connect_timeout(
-                            &std::net::SocketAddr::new(
-                                std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
-                                port_num,
-                            ),
-                            std::time::Duration::from_millis(50),
-                        )
-                        .is_ok()
-                        {
-                            should_write = false;
-                        }
-                    }
+                if let Ok(existing_port) = std::fs::read_to_string(&port_file)
+                    && let Ok(port_num) = existing_port.trim().parse::<u16>()
+                    && std::net::TcpStream::connect_timeout(
+                        &std::net::SocketAddr::new(
+                            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
+                            port_num,
+                        ),
+                        std::time::Duration::from_millis(50),
+                    )
+                    .is_ok()
+                {
+                    should_write = false;
                 }
 
                 if should_write {
@@ -474,15 +472,16 @@ async fn handle_acp_post(
                         .and_then(|v| v.as_bool())
                         .unwrap_or(false);
                     let existing = state.session_id.lock().map(|g| g.clone()).unwrap_or(None);
-                    if let Some(ref current) = existing {
-                        if current != id && !force {
-                            return Json(serde_json::json!({
-                                "status": "conflict",
-                                "error": "A session is already registered",
-                                "currentSessionId": current,
-                                "hint": "Send \"force\": true to overwrite, or unregister first"
-                            }));
-                        }
+                    if let Some(ref current) = existing
+                        && current != id
+                        && !force
+                    {
+                        return Json(serde_json::json!({
+                            "status": "conflict",
+                            "error": "A session is already registered",
+                            "currentSessionId": current,
+                            "hint": "Send \"force\": true to overwrite, or unregister first"
+                        }));
                     }
                     if let Ok(mut guard) = state.session_id.lock() {
                         *guard = Some(id.to_string());
@@ -625,14 +624,14 @@ async fn handle_acp_post(
     }
 
     // Fallback: nested "context" object.
-    if let Some(context) = payload.get("context") {
-        if let Ok(ctx) = serde_json::from_value::<AgentContext>(context.clone()) {
-            if let Err(err_msg) = validate_agent_context(&ctx) {
-                return Json(serde_json::json!({"status": "error", "error": err_msg}));
-            }
-            let _ = state.tx.send(AcpEvent::ApplyNotes(ctx));
-            return Json(serde_json::json!({"status": "ok"}));
+    if let Some(context) = payload.get("context")
+        && let Ok(ctx) = serde_json::from_value::<AgentContext>(context.clone())
+    {
+        if let Err(err_msg) = validate_agent_context(&ctx) {
+            return Json(serde_json::json!({"status": "error", "error": err_msg}));
         }
+        let _ = state.tx.send(AcpEvent::ApplyNotes(ctx));
+        return Json(serde_json::json!({"status": "ok"}));
     }
 
     Json(serde_json::json!({"error": "unknown action or invalid payload"}))

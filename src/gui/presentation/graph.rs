@@ -100,7 +100,7 @@ pub fn compute_graph(commits: &[(String, Vec<String>)]) -> Vec<GraphRow> {
             .collect();
         let mut deferred_cols: Vec<usize> = Vec::new();
         for &c in &closing {
-            deferred_cols.extend(lanes[c].deferred_merges.drain(..));
+            deferred_cols.append(&mut lanes[c].deferred_merges);
             lanes[c].target = None;
         }
 
@@ -213,15 +213,16 @@ pub fn compute_graph(commits: &[(String, Vec<String>)]) -> Vec<GraphRow> {
             draw_horizontal(&mut cells, commit_col, mc, commit_col);
         }
 
-        while cells.last().map_or(false, Cell::is_empty) {
+        while cells.last().is_some_and(Cell::is_empty) {
             cells.pop();
         }
 
         rows.push(GraphRow { commit_col, cells });
 
-        while lanes.last().map_or(false, |l| {
-            l.target.is_none() && l.deferred_merges.is_empty()
-        }) {
+        while lanes
+            .last()
+            .is_some_and(|l| l.target.is_none() && l.deferred_merges.is_empty())
+        {
             lanes.pop();
         }
     }

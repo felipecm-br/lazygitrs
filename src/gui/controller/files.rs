@@ -24,30 +24,30 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
     if key.code == KeyCode::Enter || key.code == KeyCode::Char('-') {
         if gui.show_file_tree {
             let selected = gui.context_mgr.selected_active();
-            if let Some(node) = gui.file_tree_nodes.get(selected) {
-                if node.is_dir {
-                    let is_minus = key.code == KeyCode::Char('-');
+            if let Some(node) = gui.file_tree_nodes.get(selected)
+                && node.is_dir
+            {
+                let is_minus = key.code == KeyCode::Char('-');
 
-                    // For any directory, Enter focuses the combined diff view.
-                    // '-' explicitly toggles collapse for any directory (including root).
-                    if !is_minus {
-                        if !gui.diff_view.is_empty() {
-                            gui.diff_focused = true;
-                            gui.screen_mode = crate::gui::ScreenMode::Full;
-                            gui.started_in_diff_mode = true;
-                        }
-                        return Ok(());
+                // For any directory, Enter focuses the combined diff view.
+                // '-' explicitly toggles collapse for any directory (including root).
+                if !is_minus {
+                    if !gui.diff_view.is_empty() {
+                        gui.diff_focused = true;
+                        gui.screen_mode = crate::gui::ScreenMode::Full;
+                        gui.started_in_diff_mode = true;
                     }
-
-                    let path = node.path.clone();
-                    if gui.collapsed_dirs.contains(&path) {
-                        gui.collapsed_dirs.remove(&path);
-                    } else {
-                        gui.collapsed_dirs.insert(path);
-                    }
-                    gui.update_file_tree_state();
                     return Ok(());
                 }
+
+                let path = node.path.clone();
+                if gui.collapsed_dirs.contains(&path) {
+                    gui.collapsed_dirs.remove(&path);
+                } else {
+                    gui.collapsed_dirs.insert(path);
+                }
+                gui.update_file_tree_state();
+                return Ok(());
             }
         }
 
@@ -188,50 +188,50 @@ fn toggle_stage(gui: &mut Gui) -> Result<()> {
     // Optimistic UI + background git so rapid Space presses stay snappy.
     if gui.show_file_tree {
         let selected = gui.context_mgr.selected_active();
-        if let Some(node) = gui.file_tree_nodes.get(selected) {
-            if node.is_dir {
-                let child_indices = node.child_file_indices.clone();
-                let mut model = gui.model.lock().unwrap();
-                // Only stage children that still need staging. Re-adding already
-                // fully staged paths fails when the path is gone from disk
-                // (e.g. staged deletions). Matches lazygit:
-                // filterNodesHaveUnstagedChanges + StageFiles.
-                let mut staging = false;
-                for &i in &child_indices {
-                    if let Some(f) = model.files.get(i) {
-                        if f.has_unstaged_changes || !f.tracked {
-                            staging = true;
-                            break;
-                        }
-                    }
+        if let Some(node) = gui.file_tree_nodes.get(selected)
+            && node.is_dir
+        {
+            let child_indices = node.child_file_indices.clone();
+            let mut model = gui.model.lock().unwrap();
+            // Only stage children that still need staging. Re-adding already
+            // fully staged paths fails when the path is gone from disk
+            // (e.g. staged deletions). Matches lazygit:
+            // filterNodesHaveUnstagedChanges + StageFiles.
+            let mut staging = false;
+            for &i in &child_indices {
+                if let Some(f) = model.files.get(i)
+                    && (f.has_unstaged_changes || !f.tracked)
+                {
+                    staging = true;
+                    break;
                 }
-                let mut to_stage = Vec::new();
-                let mut to_unstage = Vec::new();
-                for &i in &child_indices {
-                    let Some(f) = model.files.get_mut(i) else {
-                        continue;
-                    };
-                    if staging {
-                        if f.has_unstaged_changes || !f.tracked {
-                            to_stage.push(f.git_add_path().to_string());
-                            let _ = f.optimistic_stage();
-                        }
-                    } else {
-                        to_unstage.extend(f.git_reset_paths().into_iter().map(String::from));
-                        let _ = f.optimistic_unstage();
-                    }
-                }
-                drop(model);
-                gui.rebuild_file_tree_from_model();
-                gui.needs_diff_refresh = true;
-
-                if !to_stage.is_empty() {
-                    gui.enqueue_stage_then_refresh(to_stage, true);
-                } else if !to_unstage.is_empty() {
-                    gui.enqueue_stage_then_refresh(to_unstage, false);
-                }
-                return Ok(());
             }
+            let mut to_stage = Vec::new();
+            let mut to_unstage = Vec::new();
+            for &i in &child_indices {
+                let Some(f) = model.files.get_mut(i) else {
+                    continue;
+                };
+                if staging {
+                    if f.has_unstaged_changes || !f.tracked {
+                        to_stage.push(f.git_add_path().to_string());
+                        let _ = f.optimistic_stage();
+                    }
+                } else {
+                    to_unstage.extend(f.git_reset_paths().into_iter().map(String::from));
+                    let _ = f.optimistic_unstage();
+                }
+            }
+            drop(model);
+            gui.rebuild_file_tree_from_model();
+            gui.needs_diff_refresh = true;
+
+            if !to_stage.is_empty() {
+                gui.enqueue_stage_then_refresh(to_stage, true);
+            } else if !to_unstage.is_empty() {
+                gui.enqueue_stage_then_refresh(to_unstage, false);
+            }
+            return Ok(());
         }
     }
 
@@ -833,52 +833,52 @@ fn discard_file(gui: &mut Gui) -> Result<()> {
     // If in tree view and a directory is selected, discard all child files
     if gui.show_file_tree {
         let selected = gui.context_mgr.selected_active();
-        if let Some(node) = gui.file_tree_nodes.get(selected) {
-            if node.is_dir {
-                let child_indices = node.child_file_indices.clone();
-                let model = gui.model.lock().unwrap();
-                let files: Vec<_> = child_indices
-                    .iter()
-                    .filter_map(|&i| model.files.get(i).cloned())
-                    .collect();
-                let dir_name = node.name.clone();
-                drop(model);
+        if let Some(node) = gui.file_tree_nodes.get(selected)
+            && node.is_dir
+        {
+            let child_indices = node.child_file_indices.clone();
+            let model = gui.model.lock().unwrap();
+            let files: Vec<_> = child_indices
+                .iter()
+                .filter_map(|&i| model.files.get(i).cloned())
+                .collect();
+            let dir_name = node.name.clone();
+            drop(model);
 
-                if files.is_empty() {
-                    return Ok(());
-                }
-
-                if !gui.config.user_config.gui.skip_discard_change_warning {
-                    let files_clone = files.clone();
-                    gui.popup = PopupState::Menu {
-                        title: format!("Discard all changes in '{}'?", dir_name),
-                        items: vec![
-                            MenuItem {
-                                label: "Discard".to_string(),
-                                description: "discard all changes".to_string(),
-                                key: Some("d".to_string()),
-                                action: Some(Box::new(move |gui| {
-                                    gui.git.discard_files(&files_clone)?;
-                                    gui.needs_refresh = true;
-                                    Ok(())
-                                })),
-                            },
-                            MenuItem {
-                                label: "Cancel".to_string(),
-                                description: String::new(),
-                                key: Some("c".to_string()),
-                                action: Some(Box::new(|_| Ok(()))),
-                            },
-                        ],
-                        selected: 0,
-                        loading_index: None,
-                    };
-                } else {
-                    gui.git.discard_files(&files)?;
-                    gui.needs_refresh = true;
-                }
+            if files.is_empty() {
                 return Ok(());
             }
+
+            if !gui.config.user_config.gui.skip_discard_change_warning {
+                let files_clone = files.clone();
+                gui.popup = PopupState::Menu {
+                    title: format!("Discard all changes in '{}'?", dir_name),
+                    items: vec![
+                        MenuItem {
+                            label: "Discard".to_string(),
+                            description: "discard all changes".to_string(),
+                            key: Some("d".to_string()),
+                            action: Some(Box::new(move |gui| {
+                                gui.git.discard_files(&files_clone)?;
+                                gui.needs_refresh = true;
+                                Ok(())
+                            })),
+                        },
+                        MenuItem {
+                            label: "Cancel".to_string(),
+                            description: String::new(),
+                            key: Some("c".to_string()),
+                            action: Some(Box::new(|_| Ok(()))),
+                        },
+                    ],
+                    selected: 0,
+                    loading_index: None,
+                };
+            } else {
+                gui.git.discard_files(&files)?;
+                gui.needs_refresh = true;
+            }
+            return Ok(());
         }
     }
 

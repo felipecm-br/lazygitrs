@@ -566,12 +566,9 @@ pub fn find_parent_idx<T: NavigableTreeNode>(nodes: &[T], current_idx: usize) ->
         return None;
     }
     let target_depth = current_depth - 1;
-    for idx in (0..current_idx).rev() {
-        if nodes[idx].depth() == target_depth {
-            return Some(idx);
-        }
-    }
-    None
+    (0..current_idx)
+        .rev()
+        .find(|&idx| nodes[idx].depth() == target_depth)
 }
 
 pub fn find_first_child_idx<T: NavigableTreeNode>(

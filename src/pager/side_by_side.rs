@@ -243,11 +243,7 @@ impl DiffPanelLayout {
             }
         } else {
             let total_chrome = gutter * 2 + divider;
-            let content_w = if inner_w > total_chrome {
-                inner_w - total_chrome
-            } else {
-                0
-            };
+            let content_w = inner_w.saturating_sub(total_chrome);
             let panel_w = content_w / 2;
 
             let old_content_x = inner_x + gutter;
@@ -314,16 +310,11 @@ impl DiffPanelLayout {
 }
 
 /// Which layout the diff body is rendered in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum DiffViewLayout {
+    #[default]
     SideBySide,
     Unified,
-}
-
-impl Default for DiffViewLayout {
-    fn default() -> Self {
-        Self::SideBySide
-    }
 }
 
 impl DiffViewLayout {
@@ -563,7 +554,7 @@ impl DiffViewState {
     /// For multi-file diffs, walks backwards to find the nearest file header.
     pub fn file_at_line(&self, line_idx: usize) -> &str {
         for i in (0..=line_idx).rev() {
-            if let Some(ref header) = self.lines.get(i).and_then(|l| l.file_header.as_ref()) {
+            if let Some(header) = self.lines.get(i).and_then(|l| l.file_header.as_ref()) {
                 if header.starts_with("diff --git ") {
                     let parts: Vec<&str> = header.split_whitespace().collect();
                     if parts.len() >= 4 {
@@ -590,17 +581,12 @@ impl DiffViewState {
             return None;
         }
         let clamped = line_idx.min(self.lines.len().saturating_sub(1));
-        for i in (0..=clamped).rev() {
-            if self
-                .lines
+        (0..=clamped).rev().find(|&i| {
+            self.lines
                 .get(i)
                 .and_then(|l| l.file_header.as_ref())
                 .is_some()
-            {
-                return Some(i);
-            }
-        }
-        None
+        })
     }
 
     /// Sticky header for a given DiffLine index.
@@ -926,21 +912,21 @@ impl DiffViewState {
             let mut new_range: Option<(usize, usize)> = None;
             for idx in start..end {
                 let line = &lines[idx];
-                if matches!(line.change_type, ChangeType::Delete | ChangeType::Modified) {
-                    if let Some(n) = file_num(idx, false) {
-                        old_range = Some(match old_range {
-                            None => (n, n),
-                            Some((lo, hi)) => (lo.min(n), hi.max(n)),
-                        });
-                    }
+                if matches!(line.change_type, ChangeType::Delete | ChangeType::Modified)
+                    && let Some(n) = file_num(idx, false)
+                {
+                    old_range = Some(match old_range {
+                        None => (n, n),
+                        Some((lo, hi)) => (lo.min(n), hi.max(n)),
+                    });
                 }
-                if matches!(line.change_type, ChangeType::Insert | ChangeType::Modified) {
-                    if let Some(n) = file_num(idx, true) {
-                        new_range = Some(match new_range {
-                            None => (n, n),
-                            Some((lo, hi)) => (lo.min(n), hi.max(n)),
-                        });
-                    }
+                if matches!(line.change_type, ChangeType::Insert | ChangeType::Modified)
+                    && let Some(n) = file_num(idx, true)
+                {
+                    new_range = Some(match new_range {
+                        None => (n, n),
+                        Some((lo, hi)) => (lo.min(n), hi.max(n)),
+                    });
                 }
             }
             let gap_point = |new_side: bool| -> usize {
@@ -1924,28 +1910,26 @@ pub fn render_diff(
         filename = truncate_front_ellipsis(&filename, filename_budget);
     }
     let mut title_spans = vec![Span::raw(format!("{leading}{filename}{side_label}"))];
-    if keep_counts {
-        if let Some((s, u)) = state.staged_counts() {
-            // Zero counts mute to dimmed so the nonzero side pops.
-            let staged_fg = if s == 0 {
-                theme.text_dimmed
-            } else {
-                theme.file_staged.fg.unwrap_or(theme.text_dimmed)
-            };
-            let unstaged_fg = if u == 0 {
-                theme.text_dimmed
-            } else {
-                theme.file_unstaged.fg.unwrap_or(theme.text_dimmed)
-            };
-            title_spans.push(Span::styled(
-                format!(" {s} Staged"),
-                Style::default().fg(staged_fg),
-            ));
-            title_spans.push(Span::styled(
-                format!(" {u} Unstaged"),
-                Style::default().fg(unstaged_fg),
-            ));
-        }
+    if keep_counts && let Some((s, u)) = state.staged_counts() {
+        // Zero counts mute to dimmed so the nonzero side pops.
+        let staged_fg = if s == 0 {
+            theme.text_dimmed
+        } else {
+            theme.file_staged.fg.unwrap_or(theme.text_dimmed)
+        };
+        let unstaged_fg = if u == 0 {
+            theme.text_dimmed
+        } else {
+            theme.file_unstaged.fg.unwrap_or(theme.text_dimmed)
+        };
+        title_spans.push(Span::styled(
+            format!(" {s} Staged"),
+            Style::default().fg(staged_fg),
+        ));
+        title_spans.push(Span::styled(
+            format!(" {u} Unstaged"),
+            Style::default().fg(unstaged_fg),
+        ));
     }
     title_spans.push(Span::raw(trailing.to_string()));
     let title = Line::from(title_spans);
@@ -2006,11 +1990,11 @@ pub fn render_diff(
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
-    if !state.image_preview_hidden {
-        if let Some(preview) = &mut state.image_preview {
-            super::image_preview::render(frame, inner, preview, state.side_view, theme);
-            return;
-        }
+    if !state.image_preview_hidden
+        && let Some(preview) = &mut state.image_preview
+    {
+        super::image_preview::render(frame, inner, preview, state.side_view, theme);
+        return;
     }
 
     // Only a lone unavailable file fills the viewport. In multi-file buffers,
@@ -2246,9 +2230,7 @@ pub fn render_diff(
                         bg,
                     );
                 } else {
-                    let fill: String = std::iter::repeat(' ')
-                        .take(content_width as usize)
-                        .collect();
+                    let fill: String = std::iter::repeat_n(' ', content_width as usize).collect();
                     buf_write_str(
                         buf,
                         inner.x + gutter_width,
@@ -2432,7 +2414,7 @@ pub fn render_diff(
                     );
                     if is_insert {
                         let slash: String =
-                            std::iter::repeat('╱').take(panel_width as usize).collect();
+                            std::iter::repeat_n('╱', panel_width as usize).collect();
                         buf_write_str(
                             buf,
                             inner.x + gutter_width,
@@ -2452,8 +2434,7 @@ pub fn render_diff(
                             left_bg,
                         );
                     } else {
-                        let fill: String =
-                            std::iter::repeat(' ').take(panel_width as usize).collect();
+                        let fill: String = std::iter::repeat_n(' ', panel_width as usize).collect();
                         buf_write_str(
                             buf,
                             inner.x + gutter_width,
@@ -2498,9 +2479,8 @@ pub fn render_diff(
                         gutter_width,
                     );
                     if is_delete {
-                        let slash: String = std::iter::repeat('╱')
-                            .take(right_content_width as usize)
-                            .collect();
+                        let slash: String =
+                            std::iter::repeat_n('╱', right_content_width as usize).collect();
                         buf_write_str(
                             buf,
                             right_content_x,
@@ -2520,9 +2500,8 @@ pub fn render_diff(
                             right_bg,
                         );
                     } else {
-                        let fill: String = std::iter::repeat(' ')
-                            .take(right_content_width as usize)
-                            .collect();
+                        let fill: String =
+                            std::iter::repeat_n(' ', right_content_width as usize).collect();
                         buf_write_str(
                             buf,
                             right_content_x,
@@ -2544,7 +2523,7 @@ pub fn render_diff(
                 // Left content
                 let left_spans = if is_insert {
                     let slash_fill: String =
-                        std::iter::repeat('╱').take(panel_width as usize).collect();
+                        std::iter::repeat_n('╱', panel_width as usize).collect();
                     vec![Span::styled(
                         slash_fill,
                         Style::default().fg(theme.diff_line_number).bg(left_bg),
@@ -2609,7 +2588,7 @@ pub fn render_diff(
                 // Right content
                 let right_spans = if is_delete {
                     let slash_fill: String =
-                        std::iter::repeat('╱').take(panel_width as usize).collect();
+                        std::iter::repeat_n('╱', panel_width as usize).collect();
                     vec![Span::styled(
                         slash_fill,
                         Style::default().fg(theme.diff_line_number).bg(right_bg),
@@ -2713,11 +2692,12 @@ fn render_inline_image_regions(
         {
             continue;
         }
-        if let Some((section, _, end)) = runs.last_mut() {
-            if *section == line.section_index && *end == y {
-                *end = y + 1;
-                continue;
-            }
+        if let Some((section, _, end)) = runs.last_mut()
+            && *section == line.section_index
+            && *end == y
+        {
+            *end = y + 1;
+            continue;
         }
         runs.push((line.section_index, y, y + 1));
     }
@@ -3089,9 +3069,7 @@ fn render_unified_row(
             buf_write_str(buf, prefix_x, y, " ·", sign_style, PREFIX_WIDTH);
         }
 
-        let fill: String = std::iter::repeat(' ')
-            .take(content_width as usize)
-            .collect();
+        let fill: String = std::iter::repeat_n(' ', content_width as usize).collect();
         buf_write_str(buf, content_x, y, &fill, fill_style, content_width);
         buf_write_spans(
             buf,
@@ -3277,10 +3255,10 @@ fn render_hover_plus_button(buf: &mut Buffer, area: Rect, state: &DiffViewState,
         _ => return,
     };
 
-    if let Some(ref edit) = state.inline_edit {
-        if edit.line_idx == line_idx {
-            return;
-        }
+    if let Some(ref edit) = state.inline_edit
+        && edit.line_idx == line_idx
+    {
+        return;
     }
 
     let pl = DiffPanelLayout::compute(area, state);
@@ -3575,62 +3553,63 @@ fn render_diff_annotations(
     }
 
     // Render the inline editor for NEW notes (after all saved notes).
-    if let Some(ref edit) = state.inline_edit {
-        if edit.line_idx == line_idx && edit.editing_id.is_empty() {
-            if *row + 5 <= visible_height {
-                let y = inner.y + *row as u16;
-                let file_path = state.file_at_line(line_idx);
-                let line_num = state.file_line_number(line_idx, edit.panel).unwrap_or(0);
+    if let Some(ref edit) = state.inline_edit
+        && edit.line_idx == line_idx
+        && edit.editing_id.is_empty()
+    {
+        if *row + 5 <= visible_height {
+            let y = inner.y + *row as u16;
+            let file_path = state.file_at_line(line_idx);
+            let line_num = state.file_line_number(line_idx, edit.panel).unwrap_or(0);
 
-                let edit_area = if edit.panel == DiffPanel::Old {
-                    Rect::new(inner.x, y, panel_width + gutter_width, 5)
-                } else {
-                    Rect::new(
-                        div_x + divider_width,
-                        y,
-                        right_content_width + gutter_width,
-                        5,
-                    )
-                };
+            let edit_area = if edit.panel == DiffPanel::Old {
+                Rect::new(inner.x, y, panel_width + gutter_width, 5)
+            } else {
+                Rect::new(
+                    div_x + divider_width,
+                    y,
+                    right_content_width + gutter_width,
+                    5,
+                )
+            };
 
-                let title = format!(" 󱞂 - {} - {} ", file_path, line_num);
-                let block = ratatui::widgets::Block::default()
-                    .borders(theme.borders_for("notes"))
-                    .border_type(theme.border_type_for("notes"))
-                    .border_style(Style::default().fg(theme.accent))
-                    .title(title)
-                    .title_bottom(
-                        ratatui::text::Line::from(vec![
-                            ratatui::text::Span::styled(
-                                " Ctrl+S ",
-                                Style::default()
-                                    .fg(theme.accent)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            ratatui::text::Span::styled(
-                                " save ",
-                                Style::default().fg(theme.text_dimmed),
-                            ),
-                            ratatui::text::Span::styled(
-                                " Esc ",
-                                Style::default()
-                                    .fg(theme.accent)
-                                    .add_modifier(Modifier::BOLD),
-                            ),
-                            ratatui::text::Span::styled(
-                                " close ",
-                                Style::default().fg(theme.text_dimmed),
-                            ),
-                        ])
-                        .alignment(ratatui::layout::Alignment::Right),
-                    );
+            let title = format!(" 󱞂 - {} - {} ", file_path, line_num);
+            let block = ratatui::widgets::Block::default()
+                .borders(theme.borders_for("notes"))
+                .border_type(theme.border_type_for("notes"))
+                .border_style(Style::default().fg(theme.accent))
+                .title(title)
+                .title_bottom(
+                    ratatui::text::Line::from(vec![
+                        ratatui::text::Span::styled(
+                            " Ctrl+S ",
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        ratatui::text::Span::styled(
+                            " save ",
+                            Style::default().fg(theme.text_dimmed),
+                        ),
+                        ratatui::text::Span::styled(
+                            " Esc ",
+                            Style::default()
+                                .fg(theme.accent)
+                                .add_modifier(Modifier::BOLD),
+                        ),
+                        ratatui::text::Span::styled(
+                            " close ",
+                            Style::default().fg(theme.text_dimmed),
+                        ),
+                    ])
+                    .alignment(ratatui::layout::Alignment::Right),
+                );
 
-                let mut ta = edit.textarea.clone();
-                ta.set_block(block);
-                ratatui::widgets::Widget::render(&ta, edit_area, buf);
-            }
-            *row += 5;
+            let mut ta = edit.textarea.clone();
+            ta.set_block(block);
+            ratatui::widgets::Widget::render(&ta, edit_area, buf);
         }
+        *row += 5;
     }
 }
 
@@ -4281,7 +4260,7 @@ pub fn render_diff_search_bar(frame: &mut Frame, area: Rect, state: &DiffViewSta
 
         if let Some(ref ta) = state.search_textarea {
             let ta_rect = Rect::new(bar_rect.x + prefix_width, bar_y, ta_width, 1);
-            frame.render_widget(&*ta, ta_rect);
+            frame.render_widget(ta, ta_rect);
         }
 
         if !match_info.is_empty() {
@@ -4349,10 +4328,10 @@ pub(crate) fn parse_multi_file_diff(diff: &str) -> Vec<(String, &str)> {
         line_start = line_end + 1;
     }
 
-    if let Some(start) = section_start {
-        if !current_filename.is_empty() {
-            sections.push((current_filename, &diff[start..]));
-        }
+    if let Some(start) = section_start
+        && !current_filename.is_empty()
+    {
+        sections.push((current_filename, &diff[start..]));
     }
 
     sections
@@ -4378,7 +4357,7 @@ fn build_file_sections_parallel(section_meta: &[(&str, &str)]) -> Vec<FileSectio
         .unwrap_or(4)
         .min(n)
         .max(1);
-    let chunk = (n + workers - 1) / workers;
+    let chunk = n.div_ceil(workers);
     let mut handles = Vec::with_capacity(workers);
 
     for w in 0..workers {
@@ -4459,10 +4438,11 @@ fn parse_unified_diff(diff: &str) -> (String, String) {
         }
     }
 
-    if old_lines.is_empty() && new_lines.is_empty() {
-        if let Some((old_path, new_path)) = rename_only_paths(diff) {
-            return (old_path, new_path);
-        }
+    if old_lines.is_empty()
+        && new_lines.is_empty()
+        && let Some((old_path, new_path)) = rename_only_paths(diff)
+    {
+        return (old_path, new_path);
     }
 
     (old_lines.join("\n"), new_lines.join("\n"))

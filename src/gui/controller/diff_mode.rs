@@ -226,12 +226,12 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
     }
 
     // Number keys 1-5 to jump to focus panel
-    if let KeyCode::Char(c @ '1'..='5') = key.code {
-        if let Some(focus) = DiffModeFocus::from_number(c.to_digit(10).unwrap()) {
-            gui.diff_mode.set_focus(focus);
-            gui.needs_diff_refresh = true;
-            return Ok(());
-        }
+    if let KeyCode::Char(c @ '1'..='5') = key.code
+        && let Some(focus) = DiffModeFocus::from_number(c.to_digit(10).unwrap())
+    {
+        gui.diff_mode.set_focus(focus);
+        gui.needs_diff_refresh = true;
+        return Ok(());
     }
 
     // Ctrl+S to swap refs
@@ -414,44 +414,38 @@ fn handle_commit_files_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
     }
 
     match key.code {
-        KeyCode::Char('j') | KeyCode::Down => {
-            if gui.diff_mode.diff_files_selected < len - 1 {
-                gui.diff_mode.diff_files_selected += 1;
-                gui.diff_mode.viewport_manually_scrolled = false;
-                gui.needs_diff_refresh = true;
-            }
+        KeyCode::Char('j') | KeyCode::Down if gui.diff_mode.diff_files_selected < len - 1 => {
+            gui.diff_mode.diff_files_selected += 1;
+            gui.diff_mode.viewport_manually_scrolled = false;
+            gui.needs_diff_refresh = true;
         }
-        KeyCode::Char('k') | KeyCode::Up => {
-            if gui.diff_mode.diff_files_selected > 0 {
-                gui.diff_mode.diff_files_selected -= 1;
-                gui.diff_mode.viewport_manually_scrolled = false;
-                gui.needs_diff_refresh = true;
-            }
+        KeyCode::Char('k') | KeyCode::Up if gui.diff_mode.diff_files_selected > 0 => {
+            gui.diff_mode.diff_files_selected -= 1;
+            gui.diff_mode.viewport_manually_scrolled = false;
+            gui.needs_diff_refresh = true;
         }
         KeyCode::Enter | KeyCode::Char('-') => {
-            if gui.diff_mode.show_tree {
-                if let Some(node) = gui
+            if gui.diff_mode.show_tree
+                && let Some(node) = gui
                     .diff_mode
                     .tree_nodes
                     .get(gui.diff_mode.diff_files_selected)
-                {
-                    if node.is_dir {
-                        let is_minus = key.code == KeyCode::Char('-');
-                        if !is_minus {
-                            gui.diff_mode.focus = DiffModeFocus::DiffExploration;
-                            gui.needs_diff_refresh = true;
-                            return Ok(());
-                        }
-                        let path = node.path.clone();
-                        if gui.diff_mode.collapsed_dirs.contains(&path) {
-                            gui.diff_mode.collapsed_dirs.remove(&path);
-                        } else {
-                            gui.diff_mode.collapsed_dirs.insert(path);
-                        }
-                        update_diff_mode_tree(gui);
-                        return Ok(());
-                    }
+                && node.is_dir
+            {
+                let is_minus = key.code == KeyCode::Char('-');
+                if !is_minus {
+                    gui.diff_mode.focus = DiffModeFocus::DiffExploration;
+                    gui.needs_diff_refresh = true;
+                    return Ok(());
                 }
+                let path = node.path.clone();
+                if gui.diff_mode.collapsed_dirs.contains(&path) {
+                    gui.diff_mode.collapsed_dirs.remove(&path);
+                } else {
+                    gui.diff_mode.collapsed_dirs.insert(path);
+                }
+                update_diff_mode_tree(gui);
+                return Ok(());
             }
             if key.code == KeyCode::Char('-') {
                 return Ok(());
@@ -1018,21 +1012,20 @@ pub fn maybe_request_diff(gui: &mut Gui, generation: u64, diff_key: String) {
                         return DiffPayload::Parsed(parsed);
                     }
                     // Pure renames between refs: show file content at ref_b.
-                    if crate::pager::side_by_side::is_rename_only_diff(&diff) {
-                        if let Ok(content) = git.file_content_at_commit(
+                    if crate::pager::side_by_side::is_rename_only_diff(&diff)
+                        && let Ok(content) = git.file_content_at_commit(
                             files_commit.as_deref().unwrap_or(&ref_b),
                             &current_path,
-                        ) {
-                            if !content.is_empty() {
-                                return DiffPayload::Parsed(DiffViewState::parse_content(
-                                    &current_path,
-                                    &content,
-                                    &content,
-                                    4,
-                                    exists,
-                                ));
-                            }
-                        }
+                        )
+                        && !content.is_empty()
+                    {
+                        return DiffPayload::Parsed(DiffViewState::parse_content(
+                            &current_path,
+                            &content,
+                            &content,
+                            4,
+                            exists,
+                        ));
                     }
                     DiffPayload::Parsed(DiffViewState::parse_diff_output(&name, &diff, 4, exists))
                 }

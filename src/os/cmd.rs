@@ -51,14 +51,14 @@ pub fn set_thread_command_log(log: CommandLog) {
 
 pub fn log_command(desc: &str) {
     CMD_LOG.with(|l| {
-        if let Some(ref log) = *l.borrow() {
-            if let Ok(mut entries) = log.lock() {
-                entries.push(desc.to_string());
-                // Keep last 100 entries
-                if entries.len() > 100 {
-                    let excess = entries.len() - 100;
-                    entries.drain(..excess);
-                }
+        if let Some(ref log) = *l.borrow()
+            && let Ok(mut entries) = log.lock()
+        {
+            entries.push(desc.to_string());
+            // Keep last 100 entries
+            if entries.len() > 100 {
+                let excess = entries.len() - 100;
+                entries.drain(..excess);
             }
         }
     });

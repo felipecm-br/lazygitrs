@@ -130,11 +130,12 @@ pub fn render_scrollbar(
     ) {
         let max_y = (top_y + visible_height as u16).min(area.bottom().saturating_sub(1));
         for y in top_y..max_y {
-            if y >= start_y && y <= end_y {
-                if let Some(cell) = buf.cell_mut((right_x, y)) {
-                    cell.set_char('▐');
-                    cell.set_style(border_style);
-                }
+            if y >= start_y
+                && y <= end_y
+                && let Some(cell) = buf.cell_mut((right_x, y))
+            {
+                cell.set_char('▐');
+                cell.set_style(border_style);
             }
         }
     }

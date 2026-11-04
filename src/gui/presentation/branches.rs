@@ -59,20 +59,20 @@ pub fn render_branch_list<'a>(
             }
 
             // Ahead/behind indicator (skip when remote op is active on head branch)
-            if !(branch.head && remote_op_label.is_some()) {
-                if let Some((ahead, behind)) = branch.ahead_behind() {
-                    let indicator = match (ahead > 0, behind > 0) {
-                        (true, true) => format!(" ↑{}↓{}", ahead, behind),
-                        (true, false) => format!(" ↑{}", ahead),
-                        (false, true) => format!(" ↓{}", behind),
-                        _ => String::new(),
-                    };
-                    if !indicator.is_empty() {
-                        spans.push(Span::styled(
-                            indicator,
-                            Style::default().fg(theme.accent_secondary),
-                        ));
-                    }
+            if !(branch.head && remote_op_label.is_some())
+                && let Some((ahead, behind)) = branch.ahead_behind()
+            {
+                let indicator = match (ahead > 0, behind > 0) {
+                    (true, true) => format!(" ↑{}↓{}", ahead, behind),
+                    (true, false) => format!(" ↑{}", ahead),
+                    (false, true) => format!(" ↓{}", behind),
+                    _ => String::new(),
+                };
+                if !indicator.is_empty() {
+                    spans.push(Span::styled(
+                        indicator,
+                        Style::default().fg(theme.accent_secondary),
+                    ));
                 }
             }
 

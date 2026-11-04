@@ -8,6 +8,7 @@ use super::theme::Theme;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct UserConfig {
     pub gui: GuiConfig,
     pub git: GitConfig,
@@ -18,20 +19,6 @@ pub struct UserConfig {
     pub custom_commands: Vec<CustomCommand>,
     #[serde(rename = "aiNotes")]
     pub ai_notes: AiNotesConfig,
-}
-
-impl Default for UserConfig {
-    fn default() -> Self {
-        Self {
-            gui: GuiConfig::default(),
-            git: GitConfig::default(),
-            refresher: RefresherConfig::default(),
-            keybinding: KeybindingConfig::default(),
-            os: OsConfig::default(),
-            custom_commands: Vec::new(),
-            ai_notes: AiNotesConfig::default(),
-        }
-    }
 }
 
 /// Mirrors lazygit's `refresher` config block. `refreshInterval` is the
@@ -60,10 +47,10 @@ pub(crate) fn expand_tilde(path_str: &str) -> std::path::PathBuf {
         if let Some(home) = dirs::home_dir() {
             return home.join(stripped);
         }
-    } else if path_str == "~" {
-        if let Some(home) = dirs::home_dir() {
-            return home;
-        }
+    } else if path_str == "~"
+        && let Some(home) = dirs::home_dir()
+    {
+        return home;
     }
     std::path::PathBuf::from(path_str)
 }
@@ -274,15 +261,10 @@ impl Default for GitConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct PagingConfig {
     #[serde(rename = "useConfig")]
     pub use_config: bool,
-}
-
-impl Default for PagingConfig {
-    fn default() -> Self {
-        Self { use_config: false }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -311,19 +293,11 @@ impl Default for CommitConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct MergingConfig {
     #[serde(rename = "manualCommit")]
     pub manual_commit: bool,
     pub args: String,
-}
-
-impl Default for MergingConfig {
-    fn default() -> Self {
-        Self {
-            manual_commit: false,
-            args: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -708,6 +682,7 @@ impl OsConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct CustomCommand {
     pub key: String,
     pub context: String,
@@ -720,20 +695,6 @@ pub struct CustomCommand {
     pub show_output: bool,
     #[serde(default)]
     pub prompts: Vec<CustomCommandPrompt>,
-}
-
-impl Default for CustomCommand {
-    fn default() -> Self {
-        Self {
-            key: String::new(),
-            context: String::new(),
-            command: String::new(),
-            description: String::new(),
-            stream: false,
-            show_output: false,
-            prompts: Vec::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

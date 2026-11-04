@@ -180,7 +180,7 @@ fn render_commits_window<'a>(
             }
 
             // Hash (8, lazygit default) — color by push status.
-            let is_cherry_picked = cherry_picked.iter().any(|h| *h == commit.hash);
+            let is_cherry_picked = cherry_picked.contains(&commit.hash);
             let hash_style = if is_cherry_picked {
                 Style::default()
                     .fg(theme.accent)

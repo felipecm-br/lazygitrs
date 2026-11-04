@@ -27,10 +27,11 @@ pub fn try_handle_key(gui: &mut Gui, key: KeyEvent) -> Result<bool> {
             continue;
         }
 
-        if let Some(expected) = parse_key(&cmd.key) {
-            if key.code == expected.code && key.modifiers == expected.modifiers {
-                return execute_custom_command(gui, cmd).map(|_| true);
-            }
+        if let Some(expected) = parse_key(&cmd.key)
+            && key.code == expected.code
+            && key.modifiers == expected.modifiers
+        {
+            return execute_custom_command(gui, cmd).map(|_| true);
         }
     }
 
@@ -92,7 +93,7 @@ fn run_command(gui: &mut Gui, command: &str, show_output: bool) -> Result<()> {
 
     // Execute the temporary script
     let result = CmdBuilder::new(&shell)
-        .arg(&temp_file.to_string_lossy().to_string())
+        .arg(temp_file.to_string_lossy().as_ref())
         .stdin(String::new())
         .cwd_path(gui.git.repo_path())
         .run();
@@ -204,7 +205,7 @@ pub fn open_custom_command_prompt(gui: &mut Gui) -> Result<()> {
         textarea: crate::gui::popup::make_textarea(""),
         on_confirm: Box::new(move |gui, input| {
             if !input.trim().is_empty() {
-                run_command(gui, &input, true)?;
+                run_command(gui, input, true)?;
             }
             Ok(())
         }),

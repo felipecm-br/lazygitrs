@@ -601,19 +601,19 @@ fn rename_branch(gui: &mut Gui) -> Result<()> {
 fn fast_forward(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
     let model = gui.model.lock().unwrap();
-    if let Some(branch) = model.branches.get(selected) {
-        if branch.upstream.is_some() {
-            let name = branch.name.clone();
-            drop(model);
-            gui.start_remote_op(
-                "Fetch",
-                &format!("Fetching origin for {}...", name),
-                |git| {
-                    git.fetch("origin")?;
-                    Ok(())
-                },
-            );
-        }
+    if let Some(branch) = model.branches.get(selected)
+        && branch.upstream.is_some()
+    {
+        let name = branch.name.clone();
+        drop(model);
+        gui.start_remote_op(
+            "Fetch",
+            &format!("Fetching origin for {}...", name),
+            |git| {
+                git.fetch("origin")?;
+                Ok(())
+            },
+        );
     }
     Ok(())
 }

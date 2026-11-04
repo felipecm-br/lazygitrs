@@ -208,10 +208,10 @@ impl GitCommands {
                     if let Some(n) = part.split_whitespace().next().and_then(|w| w.parse().ok()) {
                         added = n;
                     }
-                } else if part.contains("deletion") {
-                    if let Some(n) = part.split_whitespace().next().and_then(|w| w.parse().ok()) {
-                        deleted = n;
-                    }
+                } else if part.contains("deletion")
+                    && let Some(n) = part.split_whitespace().next().and_then(|w| w.parse().ok())
+                {
+                    deleted = n;
                 }
             }
             (added, deleted)

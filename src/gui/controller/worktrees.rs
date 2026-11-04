@@ -42,10 +42,9 @@ pub fn open_in_tmux_session(path: &str) -> Result<()> {
             .arg("connect")
             .arg(&target_path)
             .status()
+            && status.success()
         {
-            if status.success() {
-                return Ok(());
-            }
+            return Ok(());
         }
     }
 
