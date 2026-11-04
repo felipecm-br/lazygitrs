@@ -69,32 +69,26 @@ fn execute_custom_command(gui: &mut Gui, cmd: &CustomCommand) -> Result<()> {
 
 fn run_command(gui: &mut Gui, command: &str, show_output: bool) -> Result<()> {
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string());
-    let is_zsh = shell.ends_with("zsh");
-    let is_bash = shell.ends_with("bash");
 
-    // Create a temporary script file
+    // Create a temporary script file. Unique name + create_new so concurrent
+    // commands don't collide and a pre-planted path in /tmp is never reused.
     let temp_dir = std::env::temp_dir();
-    let temp_file = temp_dir.join(format!("lazygitrs-cmd-{}.sh", std::process::id()));
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or_default();
+    let temp_file = temp_dir.join(format!("lazygitrs-cmd-{}-{nonce}.sh", std::process::id()));
 
-    let mut script_content = String::new();
-    if is_zsh {
-        script_content.push_str("#!/bin/zsh\n");
-        script_content.push_str("setopt aliases\n");
-        script_content.push_str("[ -f ~/.dotfiles/main/git/.zsh/packages/git.zsh ] && source ~/.dotfiles/main/git/.zsh/packages/git.zsh >/dev/null 2>&1\n");
-        script_content.push_str("[ -f ~/.zshrc ] && source ~/.zshrc >/dev/null 2>&1\n");
-    } else if is_bash {
-        script_content.push_str("#!/bin/bash\n");
-        script_content.push_str("shopt -s expand_aliases\n");
-        script_content
-            .push_str("[ -f ~/.bash_aliases ] && source ~/.bash_aliases >/dev/null 2>&1\n");
-        script_content.push_str("[ -f ~/.bashrc ] && source ~/.bashrc >/dev/null 2>&1\n");
-    } else {
-        script_content.push_str("#!/bin/sh\n");
+    let functions_file = &gui.config.user_config.os.shell_functions_file;
+    let script_content = build_script(&shell, functions_file, command);
+    {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temp_file)?;
+        f.write_all(script_content.as_bytes())?;
     }
-    script_content.push_str(command);
-    script_content.push('\n');
-
-    std::fs::write(&temp_file, script_content)?;
 
     // Execute the temporary script
     let result = CmdBuilder::new(&shell)
@@ -218,4 +212,67 @@ pub fn open_custom_command_prompt(gui: &mut Gui) -> Result<()> {
         confirm_focused: false,
     };
     Ok(())
+}
+
+/// Shell script for `run_command`: enable aliases, source the user's rc and
+/// optional `os.shellFunctionsFile`, then run `command`.
+fn build_script(shell: &str, functions_file: &str, command: &str) -> String {
+    let is_zsh = shell.ends_with("zsh");
+    let is_bash = shell.ends_with("bash");
+
+    // Sourced before the rc files (the order the old hardcoded path used), so
+    // the user's rc can still override anything it defines.
+    let functions_file = functions_file.trim();
+    let source_functions = (!functions_file.is_empty()).then(|| {
+        let path = crate::config::user_config::expand_tilde(functions_file);
+        let quoted = format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"));
+        format!("[ -f {quoted} ] && . {quoted} >/dev/null 2>&1\n")
+    });
+
+    let mut script = String::new();
+    if is_zsh {
+        script.push_str("#!/bin/zsh\n");
+        script.push_str("setopt aliases\n");
+        script.extend(source_functions);
+        script.push_str("[ -f ~/.zshrc ] && source ~/.zshrc >/dev/null 2>&1\n");
+    } else if is_bash {
+        script.push_str("#!/bin/bash\n");
+        script.push_str("shopt -s expand_aliases\n");
+        script.extend(source_functions);
+        script.push_str("[ -f ~/.bash_aliases ] && source ~/.bash_aliases >/dev/null 2>&1\n");
+        script.push_str("[ -f ~/.bashrc ] && source ~/.bashrc >/dev/null 2>&1\n");
+    } else {
+        script.push_str("#!/bin/sh\n");
+        script.extend(source_functions);
+    }
+    script.push_str(command);
+    script.push('\n');
+    script
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_script;
+
+    #[test]
+    fn no_personal_paths_without_config() {
+        let s = build_script("/bin/zsh", "", "gst");
+        assert!(!s.contains(".dotfiles"), "{s}");
+        assert!(s.ends_with("gst\n"));
+    }
+
+    #[test]
+    fn sources_configured_functions_file_quoted() {
+        let s = build_script("/bin/bash", "/opt/it's/fns.sh", "gst");
+        assert!(
+            s.contains(r#"[ -f '/opt/it'\''s/fns.sh' ] && . '/opt/it'\''s/fns.sh'"#),
+            "{s}"
+        );
+        let src = s.find("fns.sh").unwrap();
+        assert!(
+            src < s.find(".bashrc").unwrap(),
+            "functions file before rc: {s}"
+        );
+        assert!(src < s.find("gst").unwrap());
+    }
 }

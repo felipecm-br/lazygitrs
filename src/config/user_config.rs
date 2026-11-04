@@ -357,6 +357,10 @@ pub struct OsConfig {
     /// When unset, inferred from `editPreset` / `$EDITOR`.
     #[serde(rename = "editInTerminal")]
     pub edit_in_terminal: Option<bool>,
+    /// Shell script of functions/aliases sourced before `:` and custom
+    /// commands run (same key as lazygit). `~` is expanded. Empty = none.
+    #[serde(rename = "shellFunctionsFile")]
+    pub shell_functions_file: String,
 }
 
 impl Default for OsConfig {
@@ -378,6 +382,7 @@ impl Default for OsConfig {
             open_dir_in_editor: String::new(),
             copy_to_clipboard_cmd: copy_cmd.to_string(),
             edit_in_terminal: None,
+            shell_functions_file: String::new(),
         }
     }
 }
