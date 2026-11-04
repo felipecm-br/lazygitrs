@@ -742,6 +742,12 @@ pub struct Gui {
     search_textarea: Option<ratatui_textarea::TextArea<'static>>,
     /// Last time a refresh occurred (for 10s background auto-refresh interval).
     last_refresh_at: Instant,
+    /// Last terminal event (key, mouse, paste, resize). Drives how eagerly the
+    /// loop wakes: results of what the user just did must paint promptly,
+    /// while a truly idle UI has nothing to redraw.
+    last_input_at: Instant,
+    /// Process start, the clock for spinner animation.
+    started_at: Instant,
     /// Active branch filter for commits panel. When non-empty, only commits from these branches are shown.
     pub commit_branch_filter: Vec<String>,
     /// Optional path used to filter the main commits panel.
@@ -1231,6 +1237,8 @@ impl Gui {
             pending_menu_popup: None,
             search_textarea: None,
             last_refresh_at: Instant::now(),
+            last_input_at: Instant::now(),
+            started_at: Instant::now(),
             commit_branch_filter: Vec::new(),
             commit_path_filter: startup_path_filter.clone(),
             commit_author_filter: Vec::new(),
@@ -1842,8 +1850,10 @@ impl Gui {
             // Check for completed background menu item operations
             self.receive_menu_async_results();
 
-            // Advance spinner animation
-            self.spinner_frame = self.spinner_frame.wrapping_add(1);
+            // Spinner phase from wall-clock time, so its speed no longer depends
+            // on how often the loop wakes (16ms busy … 1s idle). One step per
+            // 16ms keeps the old busy-mode glyph period (`frame / 8` = 128ms).
+            self.spinner_frame = (self.started_at.elapsed().as_millis() / 16) as usize;
 
             // Render
             let theme = self.active_theme();
@@ -1960,23 +1970,67 @@ impl Gui {
     }
 
     fn input_wait_timeout(&self) -> Duration {
+        /// Poll cadence while background work the user is waiting on is in flight.
+        const BUSY: Duration = Duration::from_millis(16);
+        /// Cadence for a short while after input, so debounced and async results
+        /// of that input (commit details, prefetched diffs, pages) paint promptly.
+        const ACTIVE: Duration = Duration::from_millis(50);
+        const ACTIVE_WINDOW: Duration = Duration::from_secs(2);
+        /// Upper bound when idle. Each wake repaints, so this caps idle redraws
+        /// at 1/s (previously 20/s with autoRefresh on, only to watch a timer
+        /// that fires every 10s). Unprompted results (auto-fetch, AI notes)
+        /// still appear within this bound.
+        const IDLE: Duration = Duration::from_secs(1);
+
         if self.ai_commit_generation_active()
             || self.remote_op_label.is_some()
             || self.needs_refresh
+            || self.needs_files_refresh
             || self.diff_loading
             || self.initial_load_rx.is_some()
             || self.refresh_in_progress
+            || self.files_refresh_in_progress
         {
-            Duration::from_millis(16)
-        } else if self.config.user_config.git.auto_refresh {
-            Duration::from_millis(50)
-        } else {
-            Duration::from_millis(200)
+            return BUSY;
         }
+        if self.last_input_at.elapsed() < ACTIVE_WINDOW || self.has_idle_animation() {
+            return ACTIVE;
+        }
+        // Wake in time for the next interval refresh, not on a fixed tick.
+        let refresh_interval = self.config.user_config.refresher.refresh_interval;
+        if self.config.user_config.git.auto_refresh && refresh_interval > 0 {
+            let due = Duration::from_secs(refresh_interval)
+                .saturating_sub(self.last_refresh_at.elapsed());
+            return due.clamp(BUSY, IDLE);
+        }
+        IDLE
+    }
+
+    /// A spinner is on screen that isn't covered by a busy flag above: a menu
+    /// item running async work, or a review note awaiting the AI's reply.
+    fn has_idle_animation(&self) -> bool {
+        if matches!(
+            self.popup,
+            PopupState::Menu {
+                loading_index: Some(_),
+                ..
+            }
+        ) {
+            return true;
+        }
+        self.diff_view.notes_visible
+            && self.diff_view.lines.iter().any(|line| {
+                line.comment_notes
+                    .iter()
+                    .any(|n| n.status == crate::pager::NoteStatus::Sent)
+            })
     }
 
     /// Apply one batch of terminal events before the next paint.
     fn handle_event_batch(&mut self, events: Vec<Event>) {
+        if !events.is_empty() {
+            self.last_input_at = Instant::now();
+        }
         for event in events {
             match event {
                 Event::Key(key) if key.kind == crossterm::event::KeyEventKind::Press => {
@@ -12167,9 +12221,38 @@ mod terminal_mouse_tests {
         config.user_config.git.auto_refresh = false;
         gui.config = Arc::new(config);
         gui.needs_refresh = false;
-        assert_eq!(gui.input_wait_timeout(), Duration::from_millis(200));
+        gui.last_input_at = Instant::now() - Duration::from_secs(60);
+        assert_eq!(gui.input_wait_timeout(), Duration::from_secs(1));
         gui.needs_refresh = true;
         assert_eq!(gui.input_wait_timeout(), Duration::from_millis(16));
+    }
+
+    #[test]
+    fn wait_timeout_follows_recent_input_and_refresh_deadline() {
+        let repo = TempRepo::new("wait-cadence");
+        let mut gui = checkout_test_gui(&repo);
+        let mut config = crate::config::AppConfig::default();
+        config.user_config.git.auto_refresh = true;
+        config.user_config.refresher.refresh_interval = 10;
+        gui.config = Arc::new(config);
+        gui.needs_refresh = false;
+        gui.needs_files_refresh = false;
+        gui.initial_load_rx = None;
+        gui.refresh_in_progress = false;
+
+        // Just pressed a key: stay responsive for async results.
+        gui.last_input_at = Instant::now();
+        assert_eq!(gui.input_wait_timeout(), Duration::from_millis(50));
+
+        // Idle with the refresh far off: capped at 1s, not a 50ms tick.
+        gui.last_input_at = Instant::now() - Duration::from_secs(60);
+        gui.last_refresh_at = Instant::now();
+        assert_eq!(gui.input_wait_timeout(), Duration::from_secs(1));
+
+        // Idle with the refresh almost due: wake for it, not later.
+        gui.last_refresh_at = Instant::now() - Duration::from_millis(9_700);
+        let t = gui.input_wait_timeout();
+        assert!(t <= Duration::from_millis(300), "{t:?}");
     }
 
     #[test]
