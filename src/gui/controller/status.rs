@@ -27,7 +27,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 }
 
 fn current_branch_name(gui: &Gui) -> String {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(b) = model.branches.iter().find(|b| b.head) {
         return b.name.clone();
     }

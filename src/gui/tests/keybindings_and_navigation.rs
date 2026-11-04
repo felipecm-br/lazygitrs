@@ -133,7 +133,10 @@ fn ctrl_n_key_event_opens_quick_ai_note_prompt() {
 
     // Populate model files
     {
-        let mut model = gui.model.lock().unwrap();
+        let mut model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model.files.push(crate::model::file::File {
             name: "test.txt".into(),
             display_name: "test.txt".into(),

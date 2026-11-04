@@ -6,7 +6,10 @@ use crate::gui::popup::{MenuItem, MessageKind, PopupState};
 /// Enter patch building mode from the commits panel.
 pub fn enter_patch_building(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -77,7 +80,10 @@ pub fn show_patch_menu(gui: &mut Gui) -> Result<()> {
     } else {
         // Enter patch building mode
         let selected = gui.context_mgr.selected_active();
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(commit) = model.commits.get(selected) {
             let hash = commit.hash.clone();
             let short = commit.short_hash().to_string();

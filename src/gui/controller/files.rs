@@ -192,7 +192,10 @@ fn toggle_stage(gui: &mut Gui) -> Result<()> {
             && node.is_dir
         {
             let child_indices = node.child_file_indices.clone();
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             // Only stage children that still need staging. Re-adding already
             // fully staged paths fails when the path is gone from disk
             // (e.g. staged deletions). Matches lazygit:
@@ -238,7 +241,10 @@ fn toggle_stage(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let mut model = gui.model.lock().unwrap();
+    let mut model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(file) = model.files.get_mut(file_idx) {
         let add_path = file.git_add_path().to_string();
         let reset_paths: Vec<String> = file
@@ -271,7 +277,10 @@ fn toggle_stage(gui: &mut Gui) -> Result<()> {
 
 fn toggle_stage_all(gui: &mut Gui) -> Result<()> {
     // Optimistic UI + background git (same pattern as Space / dir toggle).
-    let mut model = gui.model.lock().unwrap();
+    let mut model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let any_unstaged = model
         .files
         .iter()
@@ -298,7 +307,12 @@ fn open_commit_prompt(gui: &mut Gui) -> Result<()> {
         return Ok(());
     }
 
-    let head_is_detached = gui.model.lock().unwrap().head_branch_name.is_empty();
+    let head_is_detached = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .head_branch_name
+        .is_empty();
     if head_is_detached {
         gui.popup = PopupState::Confirm {
             title: "Detached HEAD".to_string(),
@@ -313,7 +327,10 @@ fn open_commit_prompt(gui: &mut Gui) -> Result<()> {
 }
 
 fn open_commit_prompt_after_detached_head_warning(gui: &mut Gui) -> Result<()> {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let any_staged = model.files.iter().any(|f| f.has_staged_changes);
     let no_files = model.files.is_empty();
     drop(model);
@@ -418,7 +435,10 @@ fn open_ai_commit_prompt(gui: &mut Gui) -> Result<()> {
         return Ok(());
     }
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let any_staged = model.files.iter().any(|f| f.has_staged_changes);
     let no_files = model.files.is_empty();
     drop(model);
@@ -488,7 +508,10 @@ fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(file) = model.files.get(file_idx) else {
         return Ok(());
     };
@@ -659,7 +682,10 @@ fn open_in_editor(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(file) = model.files.get(file_idx) {
         let rel_path = file.current_path().to_string();
         drop(model);
@@ -707,7 +733,10 @@ fn open_in_default_program(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(file) = model.files.get(file_idx) {
         let rel_path = file.current_path().to_string();
         drop(model);
@@ -837,7 +866,10 @@ fn discard_file(gui: &mut Gui) -> Result<()> {
             && node.is_dir
         {
             let child_indices = node.child_file_indices.clone();
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let files: Vec<_> = child_indices
                 .iter()
                 .filter_map(|&i| model.files.get(i).cloned())
@@ -885,7 +917,10 @@ fn discard_file(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(file) = model.files.get(file_idx) {
         let name = file.current_path().to_string();
         let display = file.display_name.clone();
@@ -929,7 +964,10 @@ fn ignore_file(gui: &mut Gui) -> Result<()> {
     let Some(file_idx) = gui.selected_file_index() else {
         return Ok(());
     };
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(file) = model.files.get(file_idx) {
         let name = file.current_path().to_string();
         let display = file.display_name.clone();

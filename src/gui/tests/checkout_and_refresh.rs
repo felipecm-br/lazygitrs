@@ -16,7 +16,10 @@ fn checkout_visibility_latency() {
             loop {
                 if let Some(rx) = &gui.initial_load_rx {
                     while let Ok(part) = rx.try_recv() {
-                        let mut model = gui.model.lock().unwrap();
+                        let mut model = gui
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         match part {
                             ModelPart::Branches(branches) => model.branches = branches,
                             ModelPart::Head { hash, branch_name } => {
@@ -29,7 +32,10 @@ fn checkout_visibility_latency() {
                 }
                 gui.receive_remote_op_results();
                 {
-                    let model = gui.model.lock().unwrap();
+                    let model = gui
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if model.head_branch_name == target
                         && model.branches.iter().any(|b| b.head && b.name == target)
                     {
@@ -115,12 +121,18 @@ fn tag_checkout_updates_detached_head_before_refresh() {
     let mut gui = checkout_test_gui(&repo);
     let head = repo.git(&["rev-parse", "main"]);
     repo.git(&["tag", "release", "main"]);
-    gui.model.lock().unwrap().tags = gui.git.load_tags().unwrap();
+    gui.model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .tags = gui.git.load_tags().unwrap();
     request_test_checkout(&mut gui, 'c', "release");
     wait_for_test_checkout(&mut gui);
     assert!(gui.refresh_in_progress);
     assert!(matches!(gui.popup, PopupState::None));
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     assert!(!model.branches.iter().any(|b| b.head));
     assert!(model.head_branch_name.is_empty());
     assert_eq!(model.head_hash, head);
@@ -128,7 +140,13 @@ fn tag_checkout_updates_detached_head_before_refresh() {
     assert_eq!(repo.git(&["rev-parse", "--abbrev-ref", "HEAD"]), "HEAD");
     drop(model);
     gui.refresh().unwrap();
-    assert_eq!(gui.model.lock().unwrap().head_hash, head);
+    assert_eq!(
+        gui.model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .head_hash,
+        head
+    );
 }
 
 #[test]

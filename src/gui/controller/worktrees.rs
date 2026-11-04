@@ -117,7 +117,10 @@ pub fn show_worktree_action_menu(gui: &mut Gui, branch_name: &str, path: &str, t
 
 fn switch_worktree(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(wt) = model.worktrees.get(selected) {
         if wt.is_current {
             return Ok(()); // Already in this worktree
@@ -133,7 +136,10 @@ fn switch_worktree(gui: &mut Gui) -> Result<()> {
 
 fn open_selected_in_tmux(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(wt) = model.worktrees.get(selected) {
         let path = wt.path.clone();
         drop(model);
@@ -188,7 +194,10 @@ fn create_worktree(gui: &mut Gui) -> Result<()> {
 
 fn remove_worktree(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(wt) = model.worktrees.get(selected) {
         if wt.is_current || wt.is_main {
             return Ok(()); // Can't remove current or main worktree

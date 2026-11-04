@@ -12,7 +12,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
     if key.code == KeyCode::Esc {
         gui.context_mgr.set_active(ContextId::Remotes);
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.sub_remote_branches.clear();
         }
         gui.remote_branches_name.clear();
@@ -49,7 +52,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn enter_remote_branch_commits(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(rb) = model.sub_remote_branches.get(selected) {
         let full_name = rb.full_name();
         drop(model);
@@ -57,7 +63,10 @@ fn enter_remote_branch_commits(gui: &mut Gui) -> Result<()> {
         // Load commits for this remote branch
         let commits = gui.git.load_commits_for_branch(&full_name, 300)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.set_sub_commits(commits);
         }
         gui.branch_commits_name = full_name;
@@ -72,7 +81,10 @@ fn enter_remote_branch_commits(gui: &mut Gui) -> Result<()> {
 
 fn checkout_remote_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(rb) = model.sub_remote_branches.get(selected) {
         let remote = rb.remote_name.clone();
         let branch = rb.name.clone();
@@ -96,7 +108,10 @@ fn checkout_remote_branch(gui: &mut Gui) -> Result<()> {
 
 fn merge_remote_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(rb) = model.sub_remote_branches.get(selected) {
         let remote = rb.remote_name.clone();
         let branch = rb.name.clone();
@@ -118,7 +133,10 @@ fn merge_remote_branch(gui: &mut Gui) -> Result<()> {
 
 fn rebase_remote_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(rb) = model.sub_remote_branches.get(selected) {
         let remote = rb.remote_name.clone();
         let branch = rb.name.clone();
@@ -139,7 +157,10 @@ fn rebase_remote_branch(gui: &mut Gui) -> Result<()> {
 
 fn delete_remote_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(rb) = model.sub_remote_branches.get(selected) {
         let remote = rb.remote_name.clone();
         let branch = rb.name.clone();

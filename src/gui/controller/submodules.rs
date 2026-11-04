@@ -41,7 +41,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, _keybindings: &KeybindingConfig)
 
 fn update_submodule(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(sub) = model.submodules.get(selected) {
         let path = sub.path.clone();
         drop(model);
@@ -97,7 +100,10 @@ fn add_submodule(gui: &mut Gui) -> Result<()> {
 
 fn remove_submodule(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(sub) = model.submodules.get(selected) {
         let path = sub.path.clone();
         drop(model);
@@ -117,7 +123,10 @@ fn remove_submodule(gui: &mut Gui) -> Result<()> {
 
 fn enter_submodule(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(sub) = model.submodules.get(selected) {
         let path = sub.path.clone();
         let name = sub.name.clone();

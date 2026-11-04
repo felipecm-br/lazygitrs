@@ -80,7 +80,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn enter_branch_commits(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let name = branch.name.clone();
         drop(model);
@@ -88,7 +91,10 @@ fn enter_branch_commits(gui: &mut Gui) -> Result<()> {
         // Load commits for this branch
         let commits = gui.git.load_commits_for_branch(&name, 300)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.set_sub_commits(commits);
         }
         gui.branch_commits_name = name;
@@ -104,7 +110,10 @@ fn enter_branch_commits(gui: &mut Gui) -> Result<()> {
 
 fn checkout_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         if branch.head {
             return Ok(()); // Already on this branch
@@ -131,7 +140,10 @@ fn checkout_previous(gui: &mut Gui) -> Result<()> {
 fn checkout_picker(gui: &mut Gui) -> Result<()> {
     use crate::gui::popup::{ListPickerCore, ListPickerItem, make_command_palette_search_textarea};
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut items = Vec::new();
 
     if let Some(prev) = gui.git.previous_branch_name() {
@@ -275,7 +287,10 @@ fn new_branch(gui: &mut Gui) -> Result<()> {
 
 fn delete_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         if branch.head {
             return Ok(()); // Can't delete current branch
@@ -395,7 +410,10 @@ fn delete_branch(gui: &mut Gui) -> Result<()> {
 
 fn merge_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let name = branch.name.clone();
         let merge_args = gui.config.user_config.git.merging.args.clone();
@@ -416,7 +434,10 @@ fn merge_branch(gui: &mut Gui) -> Result<()> {
 
 fn rebase_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let current_branch = model.head_branch_name.clone();
     if let Some(branch) = model.branches.get(selected) {
         let name = branch.name.clone();
@@ -495,7 +516,10 @@ pub fn enter_interactive_rebase_onto(gui: &mut Gui, onto_ref: &str) -> Result<()
     // Resolve the ref to a commit hash
     let base_hash = gui.git.resolve_ref(onto_ref)?;
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let branch_name = model.head_branch_name.clone();
 
     // Find the base commit in the model
@@ -574,7 +598,10 @@ pub fn enter_interactive_rebase_onto(gui: &mut Gui, onto_ref: &str) -> Result<()
 
 fn rename_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let old_name = branch.name.clone();
         drop(model);
@@ -600,7 +627,10 @@ fn rename_branch(gui: &mut Gui) -> Result<()> {
 
 fn fast_forward(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected)
         && branch.upstream.is_some()
     {
@@ -620,7 +650,10 @@ fn fast_forward(gui: &mut Gui) -> Result<()> {
 
 fn set_upstream(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let name = branch.name.clone();
         drop(model);
@@ -647,7 +680,10 @@ fn set_upstream(gui: &mut Gui) -> Result<()> {
 
 fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let branch_name = branch.name.clone();
         let branch_for_name = branch_name.clone();
@@ -717,7 +753,10 @@ fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
 
 fn open_in_browser_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let branch_name = branch.name.clone();
         let branch_for_pr_create = branch_name.clone();
@@ -776,7 +815,10 @@ fn open_in_browser_menu(gui: &mut Gui) -> Result<()> {
 
 fn create_worktree_from_branch(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(branch) = model.branches.get(selected) {
         let branch_name = branch.name.clone();
         drop(model);

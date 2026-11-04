@@ -91,7 +91,11 @@ fn diff_scheduler_starts_immediately_and_keeps_latest_overflow_job() {
                 diff_key: format!("commit:{value}"),
                 load: Box::new(move || {
                     executed.fetch_or(1 << value, Ordering::Relaxed);
-                    release_rx.lock().unwrap().recv().unwrap();
+                    release_rx
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .recv()
+                        .unwrap();
                     DiffPayload::Empty
                 }),
             }))

@@ -20,7 +20,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
                 .get(selected)
                 .map(|node| node.path.clone())
         } else {
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model
                 .commit_files
                 .get(selected)
@@ -154,7 +157,10 @@ fn selected_commit_file_abs_path(gui: &Gui) -> Option<String> {
             return selected_commit_dir_abs_path(gui);
         }
         let file_idx = node.file_index?;
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let file = model.commit_files.get(file_idx)?;
         let rel = file.current_path().to_string();
         drop(model);
@@ -163,7 +169,10 @@ fn selected_commit_file_abs_path(gui: &Gui) -> Option<String> {
         return Some(abs.to_string_lossy().to_string());
     }
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let file = model.commit_files.get(selected)?;
     let rel = file.current_path().to_string();
     drop(model);
@@ -245,7 +254,10 @@ fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
         Some(selected)
     };
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(idx) = file_idx else { return Ok(()) };
     let Some(file) = model.commit_files.get(idx) else {
         return Ok(());
@@ -351,7 +363,10 @@ fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
 
 pub fn update_commit_file_tree_state(gui: &mut Gui) {
     if gui.show_commit_file_tree {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         gui.commit_file_tree_nodes = crate::model::file_tree::build_commit_file_tree(
             &model.commit_files,
             &gui.commit_files_collapsed_dirs,

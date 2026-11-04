@@ -175,7 +175,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn revert_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let short = commit.short_hash().to_string();
@@ -196,7 +199,10 @@ fn revert_commit(gui: &mut Gui) -> Result<()> {
 
 fn reword_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let old_message = gui.git.commit_message_full(&hash)?;
@@ -241,7 +247,10 @@ fn reword_commit(gui: &mut Gui) -> Result<()> {
 
 fn show_reset_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -320,7 +329,10 @@ fn cherry_pick_copy(gui: &mut Gui) -> Result<()> {
         (selected, selected)
     };
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut added = 0;
     let mut removed = 0;
     for i in lo..=hi {
@@ -395,7 +407,10 @@ fn paste_commits(gui: &mut Gui) -> Result<()> {
     let n = gui.cherry_pick_clipboard.len();
     let mut hashes = gui.cherry_pick_clipboard.clone();
     let target_branch = {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if model.head_branch_name.is_empty() {
             "detached HEAD".to_string()
         } else {
@@ -427,7 +442,10 @@ fn paste_commits(gui: &mut Gui) -> Result<()> {
 
 fn squash_above_commits_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let commit = match model.commits.get(selected) {
         Some(c) => c.clone(),
         None => return Ok(()),
@@ -439,7 +457,10 @@ fn squash_above_commits_menu(gui: &mut Gui) -> Result<()> {
 
     // Find "in current branch" base: last commit before a merge-base boundary.
     // Use the last commit in the list as a simple heuristic.
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let last_hash = model
         .commits
         .last()
@@ -490,7 +511,10 @@ fn squash_above_commits_menu(gui: &mut Gui) -> Result<()> {
 
 fn tag_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let _hash = commit.hash.clone();
         drop(model);
@@ -540,7 +564,10 @@ fn apply_action_to_selection(gui: &mut Gui, action: RebaseAction) -> Result<()> 
         (selected, selected)
     };
 
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     if model.commits.get(lo).is_none() || model.commits.get(hi).is_none() {
         return Ok(());
@@ -603,7 +630,10 @@ fn apply_action_to_selection(gui: &mut Gui, action: RebaseAction) -> Result<()> 
     // loaded model entry; fall back to git metadata for commits outside the
     // currently loaded page (pagination / deep history).
     let model_commits = {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model.commits.clone()
     };
     let mut commits_to_rebase = Vec::with_capacity(rebase_hashes.len());
@@ -697,7 +727,10 @@ fn move_commit_up(gui: &mut Gui) -> Result<()> {
     if selected == 0 {
         return Ok(());
     }
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -709,7 +742,10 @@ fn move_commit_up(gui: &mut Gui) -> Result<()> {
 
 fn move_commit_down(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let commits_len = model.commits.len();
     if let Some(commit) = model.commits.get(selected) {
         if selected >= commits_len - 1 {
@@ -726,7 +762,10 @@ fn move_commit_down(gui: &mut Gui) -> Result<()> {
 
 fn create_fixup_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let short = commit.short_hash().to_string();
@@ -747,7 +786,10 @@ fn create_fixup_commit(gui: &mut Gui) -> Result<()> {
 
 fn amend_to_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         if selected == 0 {
             // HEAD commit — just amend
@@ -789,7 +831,10 @@ fn amend_to_commit(gui: &mut Gui) -> Result<()> {
 
 fn checkout_commit(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let short = commit.short_hash().to_string();
@@ -860,7 +905,10 @@ fn checkout_branch_key(index: usize) -> Option<String> {
 
 fn open_commit_in_browser_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -889,7 +937,10 @@ pub fn open_commit_in_browser_menu_for(gui: &mut Gui, hash: String) {
 
 fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let subject = commit.name.clone();
@@ -1039,7 +1090,10 @@ pub fn show_files_filtering_menu(gui: &mut Gui) -> Result<()> {
             .get(selected)
             .map(|node| node.path.clone())
     } else {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model
             .files
             .get(selected)
@@ -1095,7 +1149,10 @@ pub fn show_filtering_menu(gui: &mut Gui) -> Result<()> {
     let active = gui.context_mgr.active();
     let selected = gui.context_mgr.selected_active();
     let (selected_author, selected_branch) = {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match active {
             ContextId::Commits => {
                 let author = model
@@ -1220,7 +1277,10 @@ fn show_path_filter_input(gui: &mut Gui) -> Result<()> {
 
 fn show_author_filter_input(gui: &mut Gui) -> Result<()> {
     let authors = {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model
             .commit_filter_authors
             .values()
@@ -1378,7 +1438,10 @@ fn resolve_branch_filter_selection(checked: Vec<String>) -> Vec<String> {
 }
 
 fn show_branch_filter_menu(gui: &mut Gui) -> Result<()> {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let items = build_branch_checklist_items(&model.branches, &gui.commit_branch_filter);
     drop(model);
 
@@ -1399,7 +1462,10 @@ fn show_branch_filter_menu(gui: &mut Gui) -> Result<()> {
 
 fn enter_commit_files(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.commits.get(selected) {
         let hash = commit.hash.clone();
         let message = commit.name.clone();
@@ -1408,7 +1474,10 @@ fn enter_commit_files(gui: &mut Gui) -> Result<()> {
         // Load commit files
         let commit_files = gui.git.commit_files(&hash)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.commit_files = commit_files;
         }
         gui.commit_files_hash = hash;
@@ -1416,7 +1485,10 @@ fn enter_commit_files(gui: &mut Gui) -> Result<()> {
 
         // Build commit file tree
         if gui.show_commit_file_tree {
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             gui.commit_file_tree_nodes = crate::model::file_tree::build_commit_file_tree(
                 &model.commit_files,
                 &gui.commit_files_collapsed_dirs,
@@ -1424,7 +1496,10 @@ fn enter_commit_files(gui: &mut Gui) -> Result<()> {
             gui.context_mgr.commit_files_list_len_override = Some(gui.commit_file_tree_nodes.len());
         } else {
             gui.commit_file_tree_nodes.clear();
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             gui.context_mgr.commit_files_list_len_override = None;
             let _ = model.commit_files.len(); // just ensure it compiles
         }
@@ -1440,7 +1515,10 @@ fn enter_commit_files(gui: &mut Gui) -> Result<()> {
 
 fn enter_interactive_rebase(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
 
     let base_commit = match model.commits.get(selected) {
         Some(c) => c,

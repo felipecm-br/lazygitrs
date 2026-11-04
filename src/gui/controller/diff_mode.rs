@@ -249,7 +249,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
         DiffModeFocus::SelectorA => {
             if key.code == KeyCode::Enter {
                 gui.diff_mode.start_editing(DiffModeSelector::A);
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 gui.diff_mode.search_refs(
                     &model.branches,
                     &model.tags,
@@ -262,7 +265,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
         DiffModeFocus::SelectorB => {
             if key.code == KeyCode::Enter {
                 gui.diff_mode.start_editing(DiffModeSelector::B);
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 gui.diff_mode.search_refs(
                     &model.branches,
                     &model.tags,
@@ -301,7 +307,10 @@ fn handle_combobox_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
                 // B was just set, A still empty — jump to A and start editing
                 gui.diff_mode.set_focus(DiffModeFocus::SelectorA);
                 gui.diff_mode.start_editing(DiffModeSelector::A);
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 gui.diff_mode.search_refs(
                     &model.branches,
                     &model.tags,
@@ -313,7 +322,10 @@ fn handle_combobox_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
                 // A was just set, B still empty — jump to B and start editing
                 gui.diff_mode.set_focus(DiffModeFocus::SelectorB);
                 gui.diff_mode.start_editing(DiffModeSelector::B);
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 gui.diff_mode.search_refs(
                     &model.branches,
                     &model.tags,
@@ -343,7 +355,10 @@ fn handle_combobox_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
                 textarea_input(ta, key);
             }
             // Re-search after any text change
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             gui.diff_mode.search_refs(
                 &model.branches,
                 &model.tags,

@@ -39,7 +39,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, _keybindings: &KeybindingConfig)
 
 fn enter_tag_commits(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(tag) = model.tags.get(selected) {
         let name = tag.name.clone();
         drop(model);
@@ -47,7 +50,10 @@ fn enter_tag_commits(gui: &mut Gui) -> Result<()> {
         // Load commits reachable from this tag
         let commits = gui.git.load_commits_for_branch(&name, 300)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.set_sub_commits(commits);
         }
         gui.branch_commits_name = name;
@@ -81,7 +87,10 @@ fn create_tag(gui: &mut Gui) -> Result<()> {
 
 fn delete_tag(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(tag) = model.tags.get(selected) {
         let name = tag.name.clone();
         let on_remote = tag.on_remote;
@@ -135,7 +144,10 @@ fn prompt_remote_tag_delete(
     name: String,
     delete_local_after_remote: bool,
 ) -> Result<()> {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let items: Vec<ListPickerItem> = model
         .remotes
         .iter()
@@ -229,7 +241,10 @@ fn confirm_remote_tag_delete(
 
 fn show_reset_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(tag) = model.tags.get(selected) {
         // Prefer the tag name as the ref so the menu title is readable.
         let ref_name = tag.name.clone();
@@ -241,7 +256,10 @@ fn show_reset_menu(gui: &mut Gui) -> Result<()> {
 
 fn push_tag(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(tag) = model.tags.get(selected) {
         let name = tag.name.clone();
         drop(model);

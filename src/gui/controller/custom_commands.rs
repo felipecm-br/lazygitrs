@@ -126,7 +126,10 @@ fn run_command(gui: &mut Gui, command: &str, show_output: bool) -> Result<()> {
 }
 
 fn resolve_template(gui: &Gui, template: &str) -> String {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let selected = gui.context_mgr.selected_active();
     let active = gui.context_mgr.active();
 

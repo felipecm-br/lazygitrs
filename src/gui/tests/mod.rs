@@ -79,7 +79,10 @@ pub(super) fn checkout_test_gui(repo: &TempRepo) -> Gui {
     .unwrap();
     // Finish startup loading before exercising checkout and its refresh.
     for _ in gui.initial_load_rx.take().unwrap() {}
-    *gui.model.lock().unwrap() = gui.git.load_model(DEFAULT_COMMIT_LIMIT, false).unwrap();
+    *gui.model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) =
+        gui.git.load_model(DEFAULT_COMMIT_LIMIT, false).unwrap();
     gui.context_mgr.set_active(ContextId::Branches);
     gui
 }
@@ -122,7 +125,10 @@ pub(super) fn wait_for_test_checkout(gui: &mut Gui) {
 }
 
 pub(super) fn assert_checkout_head(gui: &Gui, branch: &str, hash: &str) {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let heads: Vec<_> = model
         .branches
         .iter()

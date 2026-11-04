@@ -1551,7 +1551,10 @@ impl Gui {
                 );
             }
         } else {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let search_state = if self.search_active || !self.search_query.is_empty() {
                 Some((
                     self.search_query.as_str(),
@@ -1561,7 +1564,10 @@ impl Gui {
             } else {
                 None
             };
-            let cmd_log = self.command_log.lock().unwrap();
+            let cmd_log = self
+                .command_log
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let mut active_commit_filters: Vec<String> = self
                 .commit_branch_filter
                 .iter()
@@ -1713,7 +1719,10 @@ impl Gui {
                 let mut got_rebase_in_progress = false;
                 let received_before = self.initial_load_received;
                 while let Ok(part) = rx.try_recv() {
-                    let mut model = self.model.lock().unwrap();
+                    let mut model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     match part {
                         ModelPart::Files(v) => {
                             model.set_files(v);
@@ -1774,7 +1783,10 @@ impl Gui {
                 // Rebuild file tree if files arrived this frame.
                 if got_files {
                     if self.show_file_tree {
-                        let model = self.model.lock().unwrap();
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
                         self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
                     }
@@ -1787,7 +1799,10 @@ impl Gui {
                         }
 
                         if let Some(ref target_file) = self.start_file_filter {
-                            let model = self.model.lock().unwrap();
+                            let model = self
+                                .model
+                                .lock()
+                                .unwrap_or_else(std::sync::PoisonError::into_inner);
                             if self.show_file_tree {
                                 if let Some(idx) = self
                                     .file_tree_nodes
@@ -2043,7 +2058,10 @@ impl Gui {
             return;
         }
         {
-            let mut model = self.model.lock().unwrap();
+            let mut model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.set_files(files);
             model.total_additions = added;
             model.total_deletions = deleted;
@@ -2165,7 +2183,10 @@ impl Gui {
                             .iter()
                             .position(|n| !n.is_dir && n.path == nav.file_path);
                     } else {
-                        let model = self.model.lock().unwrap();
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         if let Some(idx) = model.files.iter().position(|f| f.name == nav.file_path)
                         {
                             found_idx = Some(idx + 1);
@@ -2179,10 +2200,13 @@ impl Gui {
                         self.diff_focused = true;
                         self.pending_navigation = Some(nav.clone());
                     }
-                    self.command_log.lock().unwrap().push(format!(
-                        "Navigating to {} (hunk: {:?}, line: {:?}, combined: {:?})",
-                        nav.file_path, nav.hunk_number, nav.line, nav.combined_view
-                    ));
+                    self.command_log
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .push(format!(
+                            "Navigating to {} (hunk: {:?}, line: {:?}, combined: {:?})",
+                            nav.file_path, nav.hunk_number, nav.line, nav.combined_view
+                        ));
                 }
             }
         }
@@ -2518,7 +2542,10 @@ impl Gui {
 
         let active = self.context_mgr.active();
         let selected = self.context_mgr.selected_active();
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match active {
             ContextId::Files => {
                 if self.show_file_tree {
@@ -2702,7 +2729,10 @@ impl Gui {
             return;
         }
         let (diff_key, load): (String, Box<dyn FnOnce() -> DiffPayload + Send>) = {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let git = Arc::clone(&self.git);
             match context {
                 ContextId::Commits => {
@@ -2780,7 +2810,10 @@ impl Gui {
         let active = self.context_mgr.active();
         let selected = self.context_mgr.selected_active();
         let hash = {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             match active {
                 ContextId::Commits => model
                     .commits
@@ -3036,7 +3069,10 @@ impl Gui {
             match result.result {
                 Ok(commits) => {
                     let page_len = commits.len();
-                    let mut model = self.model.lock().unwrap();
+                    let mut model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     if result.replace {
                         model.set_commits(commits);
                         drop(model);
@@ -3117,7 +3153,10 @@ impl Gui {
         }
 
         let len = {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.commits.len()
         };
         if len == 0 {
@@ -3208,7 +3247,10 @@ impl Gui {
                 Ok(head) => {
                     let was_checkout = self.pending_checkout_by_name.take().is_some();
                     if let Some(head) = head {
-                        let mut model = self.model.lock().unwrap();
+                        let mut model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         for branch in &mut model.branches {
                             branch.head = branch.name == head.branch_name;
                         }
@@ -3352,7 +3394,10 @@ impl Gui {
                 self.files_refresh_rx = None;
                 self.files_refresh_in_progress = false;
                 {
-                    let mut model = self.model.lock().unwrap();
+                    let mut model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     model.set_files(files);
                     if self.show_file_tree {
                         self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
@@ -3695,7 +3740,10 @@ impl Gui {
             return;
         };
 
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match active {
             ContextId::Files => {
                 // Files panel: load and parse async on background thread
@@ -4517,14 +4565,20 @@ impl Gui {
         if matches_key(key, &keybindings.universal.prev_item)
             || matches_key(key, &keybindings.universal.prev_item_alt)
         {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             self.context_mgr.move_selection(-1, &model);
             return Ok(());
         }
         if matches_key(key, &keybindings.universal.next_item)
             || matches_key(key, &keybindings.universal.next_item_alt)
         {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             self.context_mgr.move_selection(1, &model);
             return Ok(());
         }
@@ -4535,7 +4589,10 @@ impl Gui {
             return Ok(());
         }
         if matches_key(key, &keybindings.universal.goto_bottom) {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let len = self.context_mgr.list_len(&model);
             if len > 0 {
                 self.context_mgr.set_selection(len - 1);
@@ -4597,7 +4654,10 @@ impl Gui {
 
         // Rebase options menu (global — when rebasing/merging)
         if matches_key(key, &keybindings.universal.create_rebase_options_menu) {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let is_rebasing = model.is_rebasing;
             let is_merging = model.is_merging;
             let is_cherry_picking = model.is_cherry_picking;
@@ -4744,7 +4804,10 @@ impl Gui {
             let file_path = self.diff_view.file_at_line(edit.line_idx).to_string();
 
             let is_modified = {
-                let model = self.model.lock().unwrap();
+                let model = self
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 model.files.iter().any(|f| f.name == file_path)
             };
 
@@ -7041,7 +7104,10 @@ impl Gui {
     ) -> Vec<crate::gui::popup::ListPickerItem> {
         use crate::gui::popup::ListPickerItem;
 
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut items = Vec::new();
 
         for branch in &model.branches {
@@ -7961,10 +8027,18 @@ impl Gui {
                         let new_model =
                             new_git.load_model(DEFAULT_COMMIT_LIMIT, gui.all_branches_log)?;
                         gui.git = std::sync::Arc::new(new_git);
-                        *gui.model.lock().unwrap() = new_model;
+                        *gui.model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner) = new_model;
                         gui.commit_list_cache = presentation::commits::CommitListCache::default();
-                        gui.commit_stats_cache.lock().unwrap().clear();
-                        gui.commit_messages_cache.lock().unwrap().clear();
+                        gui.commit_stats_cache
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .clear();
+                        gui.commit_messages_cache
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner)
+                            .clear();
                         gui.clear_diff_preview_cache();
                         gui.last_commit_details_key.clear();
                         gui.commit_details_generation
@@ -8104,7 +8178,10 @@ impl Gui {
         }
 
         let query = self.search_query.to_lowercase();
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let active = self.context_mgr.active();
 
         match active {
@@ -9024,7 +9101,10 @@ impl Gui {
                 } else {
                     // Viewport-only scroll: move scroll offset without changing selection
                     let active_ctx = self.context_mgr.active();
-                    let model = self.model.lock().unwrap();
+                    let model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let list_len = self.context_mgr.list_len(&model);
                     drop(model);
                     let visible_height = self.sidebar_visible_height();
@@ -9050,7 +9130,10 @@ impl Gui {
                 } else {
                     // Viewport-only scroll: move scroll offset without changing selection
                     let active_ctx = self.context_mgr.active();
-                    let model = self.model.lock().unwrap();
+                    let model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let list_len = self.context_mgr.list_len(&model);
                     drop(model);
                     let visible_height = self.sidebar_visible_height();
@@ -9196,7 +9279,10 @@ impl Gui {
                             } else if self.diff_mode.ref_a.is_empty() {
                                 self.diff_mode.set_focus(DiffModeFocus::SelectorA);
                                 self.diff_mode.start_editing(DiffModeSelector::A);
-                                let model = self.model.lock().unwrap();
+                                let model = self
+                                    .model
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                                 self.diff_mode.search_refs(
                                     &model.branches,
                                     &model.tags,
@@ -9207,7 +9293,10 @@ impl Gui {
                             } else {
                                 self.diff_mode.set_focus(DiffModeFocus::SelectorB);
                                 self.diff_mode.start_editing(DiffModeSelector::B);
-                                let model = self.model.lock().unwrap();
+                                let model = self
+                                    .model
+                                    .lock()
+                                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                                 self.diff_mode.search_refs(
                                     &model.branches,
                                     &model.tags,
@@ -9281,7 +9370,10 @@ impl Gui {
                         self.diff_mode.set_focus(DiffModeFocus::SelectorA);
                         // Start editing on click
                         self.diff_mode.start_editing(DiffModeSelector::A);
-                        let model = self.model.lock().unwrap();
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         self.diff_mode.search_refs(
                             &model.branches,
                             &model.tags,
@@ -9293,7 +9385,10 @@ impl Gui {
                         self.diff_mode.set_focus(DiffModeFocus::SelectorB);
                         // Start editing on click
                         self.diff_mode.start_editing(DiffModeSelector::B);
-                        let model = self.model.lock().unwrap();
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         self.diff_mode.search_refs(
                             &model.branches,
                             &model.tags,
@@ -9472,7 +9567,10 @@ impl Gui {
             {
                 let inner_y = row.saturating_sub(panel_rect.y + 1);
                 let active_ctx = self.context_mgr.active();
-                let model = self.model.lock().unwrap();
+                let model = self
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 let list_len = self.context_mgr.list_len(&model);
                 drop(model);
                 let scroll_offset = self.context_mgr.scroll_offset(active_ctx);
@@ -9531,7 +9629,10 @@ impl Gui {
                         // Select the clicked item.
                         let inner_y = row.saturating_sub(panel_rect.y + 1); // +1 for border
                         let active_ctx = self.context_mgr.active();
-                        let model = self.model.lock().unwrap();
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
                         let list_len = self.context_mgr.list_len(&model);
                         drop(model);
 
@@ -9735,7 +9836,10 @@ impl Gui {
         }
         let ctx = self.context_mgr.active();
         let sel = self.context_mgr.selected(ctx);
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         match ctx {
             ContextId::Commits => sel < model.commits.len(),
             ContextId::BranchCommits => sel < model.sub_commits.len(),
@@ -10137,7 +10241,10 @@ impl Gui {
             match self.context_mgr.active() {
                 ContextId::Files => {
                     let selected = self.context_mgr.selected(ContextId::Files);
-                    let model = self.model.lock().unwrap();
+                    let model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let file = model
                         .files
                         .get(selected)
@@ -10147,7 +10254,10 @@ impl Gui {
                 }
                 ContextId::CommitFiles | ContextId::BranchCommitFiles | ContextId::StashFiles => {
                     let selected = self.context_mgr.selected(self.context_mgr.active());
-                    let model = self.model.lock().unwrap();
+                    let model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     let file = model
                         .commit_files
                         .get(selected)
@@ -10835,7 +10945,10 @@ impl Gui {
         let Some(file_idx) = self.selected_file_index() else {
             return Ok(());
         };
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(file) = model.files.get(file_idx).cloned() else {
             return Ok(());
         };
@@ -10883,7 +10996,10 @@ impl Gui {
         let Some(file_idx) = self.selected_file_index() else {
             return Ok(());
         };
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(file) = model.files.get(file_idx).cloned() else {
             return Ok(());
         };
@@ -10925,7 +11041,10 @@ impl Gui {
             return Ok(());
         };
 
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(file) = model.files.get(file_idx) else {
             return Ok(());
         };
@@ -11121,14 +11240,20 @@ impl Gui {
 
     fn refresh(&mut self) -> Result<()> {
         let commit_limit = {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.commits.len().max(DEFAULT_COMMIT_LIMIT)
         };
         self.reset_commit_pagination();
         self.diff_preview_cache.retain_immutable();
         let new_model = self.git.load_model(commit_limit, self.all_branches_log)?;
         {
-            let mut model = self.model.lock().unwrap();
+            let mut model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.replace_keeping_file_order(new_model);
 
             // If branch filters are active, reload commits for those branches only.
@@ -11148,7 +11273,10 @@ impl Gui {
     fn after_model_refresh(&mut self) -> Result<()> {
         // Commits arrive already filtered via load_model_streaming(commit_filter)
         // or reload_filtered_commits_async — don't re-fetch here.
-        let mut model = self.model.lock().unwrap();
+        let mut model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         self.commit_history_complete = model.commits.len() < DEFAULT_COMMIT_LIMIT;
 
         // Rebuild file tree inline to avoid borrow issues
@@ -11255,7 +11383,10 @@ impl Gui {
         // Status-only is enough for staging correctness; skip expensive
         // numstat/hunk subprocesses on this hot path.
         let files = self.git.load_files_status_only()?;
-        let mut model = self.model.lock().unwrap();
+        let mut model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model.set_files(files);
 
         if self.show_file_tree {
@@ -11271,7 +11402,10 @@ impl Gui {
 
     /// Rebuild the file tree from the current in-memory model (no git).
     pub(crate) fn rebuild_file_tree_from_model(&mut self) {
-        let model = self.model.lock().unwrap();
+        let model = self
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if self.show_file_tree {
             self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
             self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
@@ -11373,7 +11507,10 @@ impl Gui {
 
     pub fn update_file_tree_state(&mut self) {
         if self.show_file_tree {
-            let model = self.model.lock().unwrap();
+            let model = self
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
             self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
         } else {

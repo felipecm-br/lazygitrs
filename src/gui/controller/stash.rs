@@ -37,7 +37,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn enter_stash_files(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = model.stash_entries.get(selected) {
         let hash = entry.hash.clone();
         let message = entry.name.clone();
@@ -47,7 +50,10 @@ fn enter_stash_files(gui: &mut Gui) -> Result<()> {
         // loaded separately, so whole-stash line and hunk counts are unnecessary.
         let commit_files = gui.git.commit_files_without_stats(&hash)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.commit_files = commit_files;
         }
         gui.commit_files_hash = hash;
@@ -55,7 +61,10 @@ fn enter_stash_files(gui: &mut Gui) -> Result<()> {
 
         // Build file tree if tree view is enabled
         if gui.show_commit_file_tree {
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             gui.commit_file_tree_nodes = crate::model::file_tree::build_commit_file_tree(
                 &model.commit_files,
                 &gui.commit_files_collapsed_dirs,
@@ -77,7 +86,10 @@ fn enter_stash_files(gui: &mut Gui) -> Result<()> {
 
 fn pop_stash(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = model.stash_entries.get(selected) {
         let index = entry.index;
         let name = entry.name.clone();
@@ -116,7 +128,10 @@ fn pop_stash(gui: &mut Gui) -> Result<()> {
 
 fn apply_stash(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = model.stash_entries.get(selected) {
         let index = entry.index;
         let name = entry.name.clone();
@@ -155,7 +170,10 @@ fn apply_stash(gui: &mut Gui) -> Result<()> {
 
 fn drop_stash(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = model.stash_entries.get(selected) {
         let index = entry.index;
         let name = entry.name.clone();
@@ -190,7 +208,10 @@ fn drop_stash(gui: &mut Gui) -> Result<()> {
 
 fn rename_stash(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(entry) = model.stash_entries.get(selected) {
         let index = entry.index;
         let current_name = entry.name.clone();

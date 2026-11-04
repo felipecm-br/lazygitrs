@@ -43,7 +43,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn open_in_browser(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -54,7 +57,10 @@ fn open_in_browser(gui: &mut Gui) -> Result<()> {
 
 fn enter_reflog_commit_files(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         let message = commit.name.clone();
@@ -63,7 +69,10 @@ fn enter_reflog_commit_files(gui: &mut Gui) -> Result<()> {
         // Load commit files
         let commit_files = gui.git.commit_files(&hash)?;
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.commit_files = commit_files;
         }
         gui.commit_files_hash = hash;
@@ -72,7 +81,10 @@ fn enter_reflog_commit_files(gui: &mut Gui) -> Result<()> {
 
         // Build commit file tree
         if gui.show_commit_file_tree {
-            let model = gui.model.lock().unwrap();
+            let model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             gui.commit_file_tree_nodes = crate::model::file_tree::build_commit_file_tree(
                 &model.commit_files,
                 &gui.commit_files_collapsed_dirs,
@@ -94,7 +106,10 @@ fn enter_reflog_commit_files(gui: &mut Gui) -> Result<()> {
 
 fn checkout_reflog_entry(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         let short = commit.short_hash().to_string();
@@ -115,7 +130,10 @@ fn checkout_reflog_entry(gui: &mut Gui) -> Result<()> {
 
 fn show_reset_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         drop(model);
@@ -126,7 +144,10 @@ fn show_reset_menu(gui: &mut Gui) -> Result<()> {
 
 fn cherry_pick_reflog_entry(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         let short = commit.short_hash().to_string();
@@ -153,7 +174,10 @@ fn cherry_pick_reflog_entry(gui: &mut Gui) -> Result<()> {
 
 fn copy_to_clipboard_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(commit) = model.reflog_commits.get(selected) {
         let hash = commit.hash.clone();
         let subject = commit.name.clone();

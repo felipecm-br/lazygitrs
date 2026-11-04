@@ -52,7 +52,10 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
 fn enter_remote_branches(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(remote) = model.remotes.get(selected) {
         let name = remote.name.clone();
         let mut branches = remote.branches.clone();
@@ -69,7 +72,10 @@ fn enter_remote_branches(gui: &mut Gui) -> Result<()> {
         }
 
         {
-            let mut model = gui.model.lock().unwrap();
+            let mut model = gui
+                .model
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             model.sub_remote_branches = branches;
         }
         gui.remote_branches_name = name;
@@ -113,7 +119,10 @@ fn add_remote(gui: &mut Gui) -> Result<()> {
 
 fn delete_remote(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(remote) = model.remotes.get(selected) {
         let name = remote.name.clone();
         drop(model);
@@ -133,7 +142,10 @@ fn delete_remote(gui: &mut Gui) -> Result<()> {
 
 fn edit_remote(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(remote) = model.remotes.get(selected) {
         let old_name = remote.name.clone();
         let old_url = remote.urls.first().cloned().unwrap_or_default();
@@ -182,7 +194,10 @@ fn edit_remote(gui: &mut Gui) -> Result<()> {
 
 fn fetch_remote(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(remote) = model.remotes.get(selected) {
         let name = remote.name.clone();
         drop(model);
@@ -197,7 +212,10 @@ fn fetch_remote(gui: &mut Gui) -> Result<()> {
 }
 
 fn add_fork_remote(gui: &mut Gui) -> Result<()> {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let origin = model.remotes.iter().find(|r| r.name == "origin");
     let Some(origin) = origin else {
         drop(model);
@@ -306,7 +324,10 @@ fn ensure_fork_remote_and_checkout(
     remote_url: &str,
     branch_to_checkout: Option<String>,
 ) -> Result<()> {
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some((idx, remote)) = model
         .remotes
         .iter()
@@ -336,7 +357,10 @@ fn ensure_fork_remote_and_checkout(
 
     // Refresh remotes so we can select the new one.
     if let Ok(remotes) = gui.git.load_remotes() {
-        let mut model = gui.model.lock().unwrap();
+        let mut model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(idx) = remotes.iter().position(|r| r.name == remote_name) {
             model.remotes = remotes;
             drop(model);
@@ -376,7 +400,10 @@ fn show_push_menu(gui: &mut Gui) -> Result<()> {
 
     // Check if the current branch is tracking a remote
     let is_tracking = {
-        let model = gui.model.lock().unwrap();
+        let model = gui
+            .model
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         model
             .branches
             .iter()

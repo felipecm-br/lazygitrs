@@ -103,7 +103,10 @@ pub fn open_diff_grep_picker(gui: &mut Gui) -> Result<()> {
                 // `git diff HEAD` covers staged+unstaged tracked changes; on
                 // unborn HEAD (or any error) fall back to just untracked text.
                 diff_text = gui.git.diff_all().unwrap_or_default();
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 untracked_paths = model
                     .files
                     .iter()
@@ -176,7 +179,10 @@ fn confirm_diff_grep(gui: &mut Gui, scope: DiffGrepScope, value: &str) -> Result
     match scope {
         DiffGrepScope::Worktree => {
             let idx = {
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 model
                     .files
                     .iter()
@@ -202,7 +208,10 @@ fn confirm_diff_grep(gui: &mut Gui, scope: DiffGrepScope, value: &str) -> Result
         }
         DiffGrepScope::CommitFiles { ctx } => {
             let idx = {
-                let model = gui.model.lock().unwrap();
+                let model = gui
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
                 model
                     .commit_files
                     .iter()

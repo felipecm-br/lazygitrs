@@ -16,7 +16,10 @@ pub fn show_bisect_menu(gui: &mut Gui) -> Result<()> {
 
 fn show_bisect_start_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let hash = model
         .commits
         .get(selected)
@@ -72,7 +75,10 @@ fn show_bisect_start_menu(gui: &mut Gui) -> Result<()> {
 
 fn show_bisect_in_progress_menu(gui: &mut Gui) -> Result<()> {
     let selected = gui.context_mgr.selected_active();
-    let model = gui.model.lock().unwrap();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let hash = model
         .commits
         .get(selected)
