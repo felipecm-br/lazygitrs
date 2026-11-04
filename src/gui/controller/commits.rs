@@ -44,6 +44,11 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
         return revert_commit(gui);
     }
 
+    // Reword in the user's editor (git opens core.editor / $GIT_EDITOR).
+    if matches_key(key, &keybindings.commits.rename_commit_with_editor) {
+        return reword_commit_with_editor(gui);
+    }
+
     if matches_key(key, &keybindings.commits.rename_commit) {
         return reword_commit(gui);
     }
@@ -83,11 +88,6 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
         return fixup_commit(gui);
     }
 
-    // Drop commit
-    if matches_key(key, &keybindings.commits.pick_commit) {
-        return drop_commit(gui);
-    }
-
     // Move commit up
     if matches_key(key, &keybindings.commits.move_up_commit) {
         return move_commit_up(gui);
@@ -120,7 +120,7 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
 
     // Drop commit(s) — opens interactive rebase planner with Drop pre-marked
     if key.code == crossterm::event::KeyCode::Char('d') {
-        return apply_action_to_selection(gui, RebaseAction::Drop);
+        return drop_commit(gui);
     }
 
     // Edit commit(s) — opens interactive rebase planner with Edit pre-marked
@@ -237,6 +237,26 @@ fn reword_commit(gui: &mut Gui) -> Result<()> {
             }),
         };
     }
+    Ok(())
+}
+
+fn reword_commit_with_editor(gui: &mut Gui) -> Result<()> {
+    let selected = gui.context_mgr.selected_active();
+    let model = gui
+        .model
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(hash) = model.commits.get(selected).map(|c| c.hash.clone()) else {
+        return Ok(());
+    };
+    drop(model);
+    let args = gui.git.reword_with_editor_command(&hash)?;
+    gui.editor_handoff.pending_launch = Some(crate::config::user_config::EditorLaunch {
+        program: "git".into(),
+        args,
+        suspend: true,
+    });
+    gui.needs_refresh = true;
     Ok(())
 }
 

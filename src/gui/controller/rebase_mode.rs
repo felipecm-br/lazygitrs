@@ -1,3 +1,4 @@
+use crate::config::keybindings::matches_key;
 use anyhow::Result;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
@@ -76,11 +77,11 @@ fn handle_planning_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
     }
 
     // Action shortcuts
+    if matches_key(key, &gui.config.user_config.keybinding.commits.pick_commit) {
+        gui.rebase_mode.set_action(RebaseAction::Pick);
+        return Ok(());
+    }
     match key.code {
-        KeyCode::Char('p') => {
-            gui.rebase_mode.set_action(RebaseAction::Pick);
-            return Ok(());
-        }
         KeyCode::Char('r') => {
             gui.rebase_mode.set_action(RebaseAction::Reword);
             return Ok(());
@@ -243,11 +244,11 @@ fn handle_in_progress_key(gui: &mut Gui, key: KeyEvent) -> Result<()> {
     }
 
     // Action shortcuts for remaining (Pending) commits — persisted to disk.
+    if matches_key(key, &gui.config.user_config.keybinding.commits.pick_commit) {
+        gui.rebase_mode.set_action(RebaseAction::Pick);
+        return persist_in_progress_todo(gui);
+    }
     match key.code {
-        KeyCode::Char('p') => {
-            gui.rebase_mode.set_action(RebaseAction::Pick);
-            return persist_in_progress_todo(gui);
-        }
         KeyCode::Char('r') => {
             gui.rebase_mode.set_action(RebaseAction::Reword);
             return persist_in_progress_todo(gui);
@@ -445,7 +446,15 @@ fn show_planning_help(gui: &mut Gui) {
     let actions_section = CommandSection {
         title: "Actions".into(),
         entries: vec![
-            CommandEntry::keybinding("p".into(), "Set action to Pick".into()),
+            CommandEntry::keybinding(
+                gui.config
+                    .user_config
+                    .keybinding
+                    .commits
+                    .pick_commit
+                    .clone(),
+                "Set action to Pick".into(),
+            ),
             CommandEntry::keybinding("r".into(), "Set action to Reword".into()),
             CommandEntry::keybinding("e".into(), "Set action to Edit".into()),
             CommandEntry::keybinding("s".into(), "Set action to Squash".into()),

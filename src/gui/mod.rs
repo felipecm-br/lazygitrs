@@ -1084,7 +1084,7 @@ impl Gui {
                     config.user_config.unknown_keys.join(", ")
                 ));
         }
-        let shadowed = keymap::user_shadowed_bindings(&config.user_config.keybinding);
+        let shadowed = keymap::shadowed_bindings(&config.user_config.keybinding);
         if !shadowed.is_empty() {
             command_log
                 .lock()
@@ -7128,6 +7128,10 @@ impl Gui {
                         "Reword commit".into(),
                     ),
                     CommandEntry::keybinding(
+                        kb.commits.rename_commit_with_editor.clone(),
+                        "Reword commit in editor".into(),
+                    ),
+                    CommandEntry::keybinding(
                         kb.commits.view_reset_options.clone(),
                         "Reset options".into(),
                     ),
@@ -7155,10 +7159,7 @@ impl Gui {
                         kb.commits.amend_to_commit.clone(),
                         "Amend to commit".into(),
                     ),
-                    CommandEntry::keybinding(
-                        kb.commits.pick_commit.clone(),
-                        "Pick / Drop commit".into(),
-                    ),
+                    CommandEntry::keybinding("d".into(), "Drop commit".into()),
                     CommandEntry::keybinding(
                         kb.commits.revert_commit.clone(),
                         "Revert commit".into(),

@@ -19,6 +19,8 @@
 //! Entries tagged [`Fires::Always`] consume every key they match, so any
 //! context binding on the same key is dead. The `shadowing` tests below
 //! enforce that no default context binding is shadowed that way.
+//! [`Fires::YieldsToContext`] entries (refresh, push/pull) step aside when
+//! the active list context binds the same key, as lazygit does.
 
 use super::*;
 use crate::config::KeybindingConfig;
@@ -32,6 +34,10 @@ pub(crate) enum Fires {
     Always,
     /// The handler checks Gui state and may fall through (`Ok(false)`).
     Conditionally,
+    /// Lazygit-style context-first: skipped when the active list context
+    /// binds the same key, so the context binding wins (e.g. `R` renames in
+    /// Branches but refreshes in Files). Never shadows a context binding.
+    YieldsToContext,
 }
 
 pub(crate) struct KeymapEntry {
@@ -47,7 +53,17 @@ pub(crate) struct KeymapEntry {
 /// Run the first matching entry that consumes `key`.
 pub(crate) fn dispatch(gui: &mut Gui, key: KeyEvent, table: &[KeymapEntry]) -> Result<bool> {
     for entry in table {
-        if (entry.matches)(key, &gui.config.user_config.keybinding) && (entry.run)(gui, key)? {
+        let kb = &gui.config.user_config.keybinding;
+        if !(entry.matches)(key, kb) {
+            continue;
+        }
+        if entry.fires == Fires::YieldsToContext
+            && section_name(gui.context_mgr.active())
+                .is_some_and(|section| context_binds(kb, section, key))
+        {
+            continue;
+        }
+        if (entry.run)(gui, key)? {
             return Ok(true);
         }
     }
@@ -63,6 +79,19 @@ const fn always(
         name,
         matches,
         fires: Fires::Always,
+        run,
+    }
+}
+
+const fn yields(
+    name: &'static str,
+    matches: fn(KeyEvent, &KeybindingConfig) -> bool,
+    run: fn(&mut Gui, KeyEvent) -> Result<bool>,
+) -> KeymapEntry {
+    KeymapEntry {
+        name,
+        matches,
+        fires: Fires::YieldsToContext,
         run,
     }
 }
@@ -401,7 +430,7 @@ pub(crate) const NORMAL: &[KeymapEntry] = &[
             Ok(true)
         },
     ),
-    always(
+    yields(
         "universal.refresh",
         |k, kb| matches_key(k, &kb.universal.refresh),
         |gui, _| {
@@ -415,7 +444,7 @@ pub(crate) const NORMAL: &[KeymapEntry] = &[
         |k, kb| matches_key(k, &kb.universal.create_rebase_options_menu),
         |gui, _| gui.try_rebase_options_key(),
     ),
-    always(
+    yields(
         "universal.pushFiles / pullFiles",
         |k, kb| {
             matches_key(k, &kb.universal.push_files) || matches_key(k, &kb.universal.pull_files)
@@ -557,17 +586,48 @@ fn bindings_of<T: Serialize>(section: &T) -> Vec<(String, String)> {
         .collect()
 }
 
-/// Context sections routed through `handle_context_key`, i.e. after
-/// both tables.
-fn context_sections(kb: &KeybindingConfig) -> Vec<(&'static str, Vec<(String, String)>)> {
-    vec![
-        ("files", bindings_of(&kb.files)),
-        ("branches", bindings_of(&kb.branches)),
-        ("commits", bindings_of(&kb.commits)),
-        ("stash", bindings_of(&kb.stash)),
-        ("status", bindings_of(&kb.status)),
-    ]
+/// Config fields that live in a context section but are only read by a
+/// modal layer (which runs before the tables), so they neither shadow nor
+/// get shadowed in the list context. `pickCommit` is the rebase planner's
+/// "set action to pick"; in the Commits list `p` stays `universal.pullFiles`.
+const MODAL_ONLY_FIELDS: &[&str] = &["commits.pickCommit"];
+
+/// The config section read by the list context's controller.
+fn section_name(ctx: ContextId) -> Option<&'static str> {
+    match ctx {
+        ContextId::Files => Some("files"),
+        ContextId::Branches => Some("branches"),
+        ContextId::Commits => Some("commits"),
+        ContextId::Stash => Some("stash"),
+        ContextId::Status => Some("status"),
+        _ => None,
+    }
 }
+
+/// Bindings of one context section as (field, key), minus modal-only fields.
+fn section_bindings(kb: &KeybindingConfig, section: &str) -> Vec<(String, String)> {
+    let binds = match section {
+        "files" => bindings_of(&kb.files),
+        "branches" => bindings_of(&kb.branches),
+        "commits" => bindings_of(&kb.commits),
+        "stash" => bindings_of(&kb.stash),
+        "status" => bindings_of(&kb.status),
+        _ => Vec::new(),
+    };
+    binds
+        .into_iter()
+        .filter(|(field, _)| !MODAL_ONLY_FIELDS.contains(&format!("{section}.{field}").as_str()))
+        .collect()
+}
+
+/// Whether the given context section binds `key`.
+fn context_binds(kb: &KeybindingConfig, section: &str, key: KeyEvent) -> bool {
+    section_bindings(kb, section)
+        .iter()
+        .any(|(_, k)| matches_key(key, k))
+}
+
+const SECTIONS: &[&str] = &["files", "branches", "commits", "stash", "status"];
 
 fn always_entries() -> impl Iterator<Item = &'static KeymapEntry> {
     PRE_DIFF_FOCUS
@@ -576,35 +636,18 @@ fn always_entries() -> impl Iterator<Item = &'static KeymapEntry> {
         .filter(|e| e.fires == Fires::Always)
 }
 
-/// Default context bindings that are already shadowed by a `Fires::Always`
-/// entry. They are listed here so the change is deliberate: resolving one
-/// means changing behaviour, and the test fails if one is added or fixed
-/// without updating this list.
-///
-/// - `branches.renameBranch` / `commits.renameCommitWithEditor` = `R`:
-///   `universal.refresh` wins (lazygit resolves context-first instead).
-///   `renameCommitWithEditor` has no handler at all.
-/// - `commits.pickCommit` = `p`: `universal.pullFiles` wins. The commits
-///   controller maps `pickCommit` to *drop*, so un-shadowing it as-is would
-///   turn `p` from pull into drop.
-pub(crate) const KNOWN_DEFAULT_SHADOWED: &[&str] = &[
-    "branches.renameBranch",
-    "commits.pickCommit",
-    "commits.renameCommitWithEditor",
-];
-
-/// The shadowing a config produces: context bindings that can never
-/// fire because an earlier `Fires::Always` entry consumes their key.
-/// Each item is `(context.field, human-readable description)`.
-pub(crate) fn shadowed_bindings(kb: &KeybindingConfig) -> Vec<(String, String)> {
+/// Context bindings that can never fire because an earlier `Fires::Always`
+/// entry consumes their key. Reported once in the command log at startup;
+/// the defaults must produce none (tested).
+pub(crate) fn shadowed_bindings(kb: &KeybindingConfig) -> Vec<String> {
     let mut out = Vec::new();
-    for (ctx, binds) in context_sections(kb) {
-        for (field, key) in binds {
+    for section in SECTIONS {
+        for (field, key) in section_bindings(kb, section) {
             let Some(ev) = parse_key(&key) else { continue };
             if let Some(e) = always_entries().find(|e| (e.matches)(ev, kb)) {
-                out.push((
-                    format!("{ctx}.{field}"),
-                    format!("{ctx}.{field} = {key} (shadowed by {})", e.name),
+                out.push(format!(
+                    "{section}.{field} = {key} (shadowed by {})",
+                    e.name
                 ));
             }
         }
@@ -612,52 +655,44 @@ pub(crate) fn shadowed_bindings(kb: &KeybindingConfig) -> Vec<(String, String)> 
     out
 }
 
-/// Shadowing introduced by the user's config, i.e. excluding the known
-/// default cases. Reported once in the command log at startup.
-pub(crate) fn user_shadowed_bindings(kb: &KeybindingConfig) -> Vec<String> {
-    let defaults = KeybindingConfig::default();
-    let default_shadowed = shadowed_bindings(&defaults);
-    shadowed_bindings(kb)
-        .into_iter()
-        .filter(|(path, desc)| {
-            !(KNOWN_DEFAULT_SHADOWED.contains(&path.as_str())
-                && default_shadowed.iter().any(|(_, d)| d == desc))
-        })
-        .map(|(_, desc)| desc)
-        .collect()
-}
-
 #[cfg(test)]
 mod shadowing {
     use super::*;
 
     fn shadowed(kb: &KeybindingConfig) -> Vec<String> {
-        shadowed_bindings(kb).into_iter().map(|(_, d)| d).collect()
+        shadowed_bindings(kb)
     }
 
     #[test]
-    fn default_shadowing_matches_the_known_list() {
-        let mut paths: Vec<String> = shadowed_bindings(&KeybindingConfig::default())
-            .into_iter()
-            .map(|(p, _)| p)
-            .collect();
-        paths.sort();
-        assert_eq!(
-            paths, KNOWN_DEFAULT_SHADOWED,
-            "default shadowing changed; update KNOWN_DEFAULT_SHADOWED deliberately"
-        );
+    fn default_context_bindings_are_not_shadowed() {
+        let shadowed = shadowed(&KeybindingConfig::default());
+        assert!(shadowed.is_empty(), "dead default bindings: {shadowed:#?}");
     }
 
     #[test]
-    fn defaults_produce_no_user_warning() {
-        assert!(user_shadowed_bindings(&KeybindingConfig::default()).is_empty());
+    fn refresh_yields_to_context_bindings_on_the_same_key() {
+        let kb = KeybindingConfig::default();
+        let r = parse_key(&kb.universal.refresh).unwrap();
+        // Branches binds R (renameBranch), Commits binds R (reword in editor).
+        assert!(context_binds(&kb, "branches", r));
+        assert!(context_binds(&kb, "commits", r));
+        // Files does not, so R refreshes there.
+        assert!(!context_binds(&kb, "files", r));
+    }
+
+    #[test]
+    fn pull_does_not_yield_to_modal_only_pick_commit() {
+        let kb = KeybindingConfig::default();
+        let p = parse_key(&kb.universal.pull_files).unwrap();
+        assert_eq!(kb.commits.pick_commit, kb.universal.pull_files);
+        assert!(!context_binds(&kb, "commits", p));
     }
 
     #[test]
     fn user_remap_onto_a_universal_key_is_warned() {
         let mut kb = KeybindingConfig::default();
         kb.files.generate_ai_commit = kb.universal.quick_ai_note.clone();
-        let warned = user_shadowed_bindings(&kb);
+        let warned = shadowed(&kb);
         assert_eq!(warned.len(), 1, "{warned:#?}");
         assert!(warned[0].contains("universal.quickAiNote"));
     }

@@ -206,6 +206,73 @@ impl GitCommands {
         Ok(())
     }
 
+    /// Build the `git` invocation that rewords `commit_hash` in the user's
+    /// own editor (lazygit `commits.renameCommitWithEditor`). Git launches
+    /// `core.editor` / `$GIT_EDITOR` itself, so the command must run with the
+    /// terminal handed over (suspended TUI).
+    ///
+    /// HEAD → `git commit --amend --only`. Older commits → an interactive
+    /// rebase whose todo marks only that commit `reword`; the todo script
+    /// deletes itself and its todo file after use.
+    pub fn reword_with_editor_command(&self, commit_hash: &str) -> Result<Vec<String>> {
+        let repo = self.repo_path().display().to_string();
+        let head = self.head_hash()?;
+        let is_head = head == commit_hash || head.starts_with(commit_hash);
+        if is_head {
+            return Ok(vec![
+                "-C".into(),
+                repo,
+                "commit".into(),
+                "--amend".into(),
+                "--only".into(),
+            ]);
+        }
+        if !self.is_ancestor(commit_hash, "HEAD") {
+            anyhow::bail!("commit {commit_hash} is not on the current branch");
+        }
+        let parent = self.commit_parent(commit_hash)?;
+        let todo_content = self
+            .rebase_commit_range(&parent)?
+            .into_iter()
+            .rev()
+            .map(|hash| {
+                let matches = hash == commit_hash
+                    || hash.starts_with(commit_hash)
+                    || commit_hash.starts_with(&hash);
+                let act = if matches {
+                    RebaseAction::Reword
+                } else {
+                    RebaseAction::Pick
+                };
+                format!("{} {}", act.as_str(), hash)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        let (todo_path, script_path) = self.write_todo_editor(&todo_content)?;
+        // Self-cleaning: the script removes the todo copy and itself.
+        let esc = |p: &std::path::Path| p.display().to_string().replace('\'', "'\\''");
+        fs::write(
+            &script_path,
+            format!(
+                "#!/bin/sh\ncp '{}' \"$1\" && rm -f '{}' \"$0\"\n",
+                esc(&todo_path),
+                esc(&todo_path)
+            ),
+        )?;
+        Ok(vec![
+            "-C".into(),
+            repo,
+            "-c".into(),
+            format!("sequence.editor='{}'", esc(&script_path)),
+            "rebase".into(),
+            "-i".into(),
+            "--keep-empty".into(),
+            "--autostash".into(),
+            parent,
+        ])
+    }
+
     /// Create a fixup commit for the given target commit.
     pub fn create_fixup_commit(&self, target_hash: &str) -> Result<()> {
         self.git()
@@ -810,6 +877,70 @@ mod tests {
         assert!(!git.is_rebase_in_progress());
         let msg = git.commit_subject(&rev_parse(dir, "HEAD~1")).unwrap();
         assert_eq!(msg, "c2-rewritten");
+    }
+
+    /// Run the args from `reword_with_editor_command` with a scripted
+    /// GIT_EDITOR that replaces the message, as the user's editor would.
+    fn run_reword_with_editor(dir: &Path, args: &[String], new_msg: &str) {
+        let script = dir.join("fake-editor.sh");
+        std::fs::write(
+            &script,
+            format!("#!/bin/sh\nprintf '{new_msg}\\n' > \"$1\"\n"),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let status = std::process::Command::new("git")
+            .args(args)
+            .env("GIT_EDITOR", &script)
+            .status()
+            .expect("run git");
+        assert!(status.success());
+        std::fs::remove_file(&script).unwrap();
+    }
+
+    #[test]
+    fn reword_with_editor_rewords_non_head_commit() {
+        let temp = TempDir::new("rebase-reword-editor");
+        let dir = temp.path();
+        init_repo(dir);
+        let _c1 = commit(dir, "c1", "1");
+        let c2 = commit(dir, "c2", "2");
+        let _c3 = commit(dir, "c3", "3");
+
+        let git = GitCommands::new(dir).expect("git");
+        let args = git.reword_with_editor_command(&c2).expect("args");
+        assert!(args.iter().any(|a| a == "rebase"));
+        run_reword_with_editor(dir, &args, "c2-from-editor");
+
+        assert!(!git.is_rebase_in_progress());
+        assert_eq!(
+            git.commit_subject(&rev_parse(dir, "HEAD~1")).unwrap(),
+            "c2-from-editor"
+        );
+        assert_eq!(git.commit_subject(&rev_parse(dir, "HEAD")).unwrap(), "c3");
+    }
+
+    #[test]
+    fn reword_with_editor_amends_head() {
+        let temp = TempDir::new("rebase-reword-editor-head");
+        let dir = temp.path();
+        init_repo(dir);
+        let _c1 = commit(dir, "c1", "1");
+        let c2 = commit(dir, "c2", "2");
+
+        let git = GitCommands::new(dir).expect("git");
+        let args = git.reword_with_editor_command(&c2).expect("args");
+        assert!(args.iter().any(|a| a == "--amend"));
+        run_reword_with_editor(dir, &args, "head-from-editor");
+
+        assert_eq!(
+            git.commit_subject(&rev_parse(dir, "HEAD")).unwrap(),
+            "head-from-editor"
+        );
     }
 
     #[test]

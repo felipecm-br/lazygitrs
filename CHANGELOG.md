@@ -13,10 +13,14 @@ All notable changes to this project will be documented in this file.
 
 - `Ctrl+G` / `Ctrl+N` are no longer hardcoded alongside `toggleWorkingTreeAndHead` / `quickAiNote`, so remapping them frees the keys
 - Files status bar shows the AI commit key
+- `R` in Branches renames the branch again instead of refreshing. Like lazygit, `universal.refresh`, `pushFiles` and `pullFiles` now give way when the active panel binds the same key (refresh still works on `R` in Files, Stash and Status)
+- `p` in Commits no longer runs a hidden *drop* through `commits.pickCommit` (it was unreachable behind pull). `pickCommit` now sets the *pick* action in the interactive rebase planner, which used to hardcode `p`. Drop stays on `d`
+- Startup logs keybindings from your config that can never fire because a universal binding takes their key first
 - Full-screen mode no longer quits on a single accidental `Esc` at the root Files panel (requires a double-tap within 400ms in full-screen mode, while `--popup` and `outerFrame` modes still dismiss on single `Esc`; pressing `Esc` with an active `/` search filter clears the filter first)
 
 ### Features & Ergonomics
 
+- `R` in Commits (`commits.renameCommitWithEditor`) rewords the selected commit in your own editor: `git commit --amend` for HEAD, a one-commit `reword` rebase for older commits
 - Add `cockpit` theme: triadic cold-color architecture, zero-background selection (`bg = Reset` + `BOLD`), and a 1-cell cyan `│` selection gutter at `X=1`
 - Add `omarchy` dynamic theme (`gui.theme: omarchy` or via the theme picker): reads `~/.local/state/omarchy/current/theme/colors.toml` (or `OMARCHY_COLORS_PATH`)
 - Status bar overhaul: uniform accent key styling, dimmed `│` separators, unambiguous key labels (`[ ]`, `{ }`, `J K`, `j k`, `tab 1-5`), dynamic `commitChanges` / `quickAiNote` labels, and a 7-pair cap per context
