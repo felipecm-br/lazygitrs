@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0-cockpit] - 2026-11-04
+
 ### Breaking
 
 - The AI-notes HTTP port is now published at `$(git rev-parse --git-dir)/lazygitrs.port` instead of `.lazygitrs.port` in the worktree root, so it no longer shows up as untracked in every repo. Clients should read `PORT=$(cat "$(git rev-parse --git-dir)/lazygitrs.port" 2>/dev/null || echo 47657)`; the bundled skill, AGENTS.md, README and cleanup script are updated. A stale root file is removed on startup, and an older running instance's root file is still honoured
