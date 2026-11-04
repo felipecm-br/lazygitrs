@@ -1195,7 +1195,6 @@ dependencies = [
  "image",
  "include_dir",
  "libc",
- "once_cell",
  "ratatui",
  "ratatui-image",
  "ratatui-textarea",

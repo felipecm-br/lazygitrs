@@ -1273,8 +1273,8 @@ fn omarchy_appearance() -> ThemeAppearance {
 }
 
 /// All available color themes (cached on first access).
-pub static COLOR_THEMES: once_cell::sync::Lazy<Vec<ColorTheme>> =
-    once_cell::sync::Lazy::new(load_color_themes);
+pub static COLOR_THEMES: std::sync::LazyLock<Vec<ColorTheme>> =
+    std::sync::LazyLock::new(load_color_themes);
 
 /// Load all available color themes (embedded + user directory).
 pub fn load_color_themes() -> Vec<ColorTheme> {

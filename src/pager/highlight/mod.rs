@@ -44,7 +44,7 @@ fn get_config_for_file(filename: &str) -> Option<&'static LanguageConfig> {
 /// They live in a lazy static, so without this the first diff ever rendered
 /// pays the whole cost on its critical path.
 pub fn warm_configs() {
-    once_cell::sync::Lazy::force(&CONFIGS);
+    std::sync::LazyLock::force(&CONFIGS);
 }
 
 /// Pre-computed highlights for an entire file, organized by line number.

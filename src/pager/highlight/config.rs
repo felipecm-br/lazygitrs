@@ -1,4 +1,4 @@
-use once_cell::sync::Lazy;
+use std::sync::LazyLock;
 use tree_sitter_highlight::HighlightConfiguration;
 
 use super::queries::*;
@@ -56,7 +56,7 @@ fn load_config(
     }
 }
 
-pub static CONFIGS: Lazy<Vec<(&'static str, LanguageConfig)>> = Lazy::new(|| {
+pub static CONFIGS: LazyLock<Vec<(&'static str, LanguageConfig)>> = LazyLock::new(|| {
     let mut configs = Vec::new();
 
     load_config(
