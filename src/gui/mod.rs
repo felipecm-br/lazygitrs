@@ -268,17 +268,6 @@ pub(crate) struct DiffResult {
 }
 
 pub(crate) enum DiffPayload {
-    /// Side-by-side diff from old/new content.
-    Content {
-        filename: String,
-        old: String,
-        new: String,
-    },
-    /// Unified diff output from git.
-    UnifiedDiff {
-        filename: String,
-        diff_output: String,
-    },
     /// Pre-parsed diff ready to apply (parsing done on background thread).
     Parsed(crate::pager::side_by_side::ParsedDiff),
     /// No diff to show.
@@ -1588,40 +1577,6 @@ fn setup_terminal() -> Result<(Term, bool)> {
 /// Wraps in single quotes and escapes any embedded single quotes.
 fn shell_escape_arg(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
-}
-
-/// Split a command string into program + args, respecting single-quoted
-/// segments (the prompt is always single-quoted via `shell_escape_arg`).
-fn split_command(cmd: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_single_quote = false;
-
-    for c in cmd.chars() {
-        match c {
-            '\'' if !in_single_quote => {
-                in_single_quote = true;
-            }
-            '\'' if in_single_quote => {
-                in_single_quote = false;
-            }
-            c if in_single_quote => {
-                current.push(c);
-            }
-            ' ' | '\t' if !in_single_quote => {
-                if !current.is_empty() {
-                    parts.push(std::mem::take(&mut current));
-                }
-            }
-            c => {
-                current.push(c);
-            }
-        }
-    }
-    if !current.is_empty() {
-        parts.push(current);
-    }
-    parts
 }
 
 /// Put the terminal back the way we found it.

@@ -948,3 +948,9 @@ impl DiffModeState {
         self.select_list_match(self.file_search_matches[self.file_search_match_idx]);
     }
 }
+
+impl Default for DiffModeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

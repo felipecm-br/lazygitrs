@@ -396,3 +396,9 @@ impl ContextManager {
         }
     }
 }
+
+impl Default for ContextManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}

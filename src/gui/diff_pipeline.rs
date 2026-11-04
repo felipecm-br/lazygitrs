@@ -45,22 +45,6 @@ impl Gui {
             self.stash_displayed_diff();
         }
         match payload {
-            DiffPayload::Content { filename, old, new } => {
-                self.diff_view.load(&filename, &old, &new);
-                self.diff_view.file_exists_on_disk = self.git.repo_path().join(&filename).exists();
-                self.diff_view.load_notes(self.git.repo_path());
-                self.displayed_diff_key = diff_key;
-            }
-            DiffPayload::UnifiedDiff {
-                filename,
-                diff_output,
-            } => {
-                self.diff_view
-                    .load_from_diff_output(&filename, &diff_output);
-                self.diff_view.file_exists_on_disk = self.git.repo_path().join(&filename).exists();
-                self.diff_view.load_notes(self.git.repo_path());
-                self.displayed_diff_key = diff_key;
-            }
             DiffPayload::Parsed(parsed) => {
                 self.diff_view.apply_parsed(parsed);
                 self.diff_view.load_notes(self.git.repo_path());

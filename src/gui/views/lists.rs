@@ -221,10 +221,10 @@ pub(super) fn paint_selection_gutter(
     if needs_shift {
         for y in inner.y..max_y {
             for x in (inner.x + 1..max_x).rev() {
-                if let Some(prev) = buf.cell((x - 1, y)).cloned() {
-                    if let Some(cur) = buf.cell_mut((x, y)) {
-                        *cur = prev;
-                    }
+                if let Some(prev) = buf.cell((x - 1, y)).cloned()
+                    && let Some(cur) = buf.cell_mut((x, y))
+                {
+                    *cur = prev;
                 }
             }
             if let Some(first) = buf.cell_mut((inner.x, y)) {
@@ -233,17 +233,17 @@ pub(super) fn paint_selection_gutter(
         }
     }
 
-    if let Some(sel_y) = selected_row {
-        if sel_y >= inner.y && sel_y < max_y {
-            if let Some(cell) = buf.cell_mut((inner.x, sel_y)) {
-                cell.set_symbol("│");
-                cell.set_style(
-                    Style::default()
-                        .fg(gutter_color)
-                        .add_modifier(ratatui::style::Modifier::BOLD),
-                );
-            }
-        }
+    if let Some(sel_y) = selected_row
+        && sel_y >= inner.y
+        && sel_y < max_y
+        && let Some(cell) = buf.cell_mut((inner.x, sel_y))
+    {
+        cell.set_symbol("│");
+        cell.set_style(
+            Style::default()
+                .fg(gutter_color)
+                .add_modifier(ratatui::style::Modifier::BOLD),
+        );
     }
 }
 

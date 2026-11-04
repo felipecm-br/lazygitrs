@@ -113,6 +113,9 @@ impl Gui {
             })
     }
 
+    /// Synchronous full reload. Test-only: the app uses the streaming
+    /// `start_background_refresh` path.
+    #[cfg(test)]
     pub(super) fn refresh(&mut self) -> Result<()> {
         let commit_limit = {
             let model = self
@@ -245,31 +248,6 @@ impl Gui {
         // rebase (or new conflict) can auto-open the InProgress view again.
         if !is_rebasing && self.rebase_mode.in_progress_dismissed {
             self.rebase_mode.in_progress_dismissed = false;
-        }
-
-        Ok(())
-    }
-
-    /// Lightweight refresh that only reloads files and diff stats.
-    /// Prefer the async status-only path after stage/unstage; this full
-    /// variant is kept for callers that need numstat immediately.
-    pub(super) fn refresh_files_only(&mut self) -> Result<()> {
-        self.diff_preview_cache.retain_immutable();
-        // Status-only is enough for staging correctness; skip expensive
-        // numstat/hunk subprocesses on this hot path.
-        let files = self.git.load_files_status_only()?;
-        let mut model = self
-            .model
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        model.set_files(files);
-
-        if self.show_file_tree {
-            self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
-            self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
-        } else {
-            self.file_tree_nodes.clear();
-            self.context_mgr.files_list_len_override = None;
         }
 
         Ok(())

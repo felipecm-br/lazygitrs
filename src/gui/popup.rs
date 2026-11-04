@@ -61,6 +61,15 @@ pub(crate) struct WrapLayout {
 }
 
 impl WrapLayout {
+    #[cfg(test)]
+    pub fn as_textarea_text(&self) -> String {
+        self.lines
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn build(raw: &str, wrap_width: usize) -> Self {
         let mut lines = Vec::new();
         let mut para_start = 0usize;
@@ -169,14 +178,6 @@ impl WrapLayout {
             .or_else(|| self.lines.last())
             .expect("wrap layout always has at least one line");
         line.raw_start + col.min(line.char_len)
-    }
-
-    pub fn as_textarea_text(&self) -> String {
-        self.lines
-            .iter()
-            .map(|l| l.text.as_str())
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     pub fn line_count(&self) -> usize {

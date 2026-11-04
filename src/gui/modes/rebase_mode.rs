@@ -313,3 +313,9 @@ fn entry_from_todo(todo: &TodoEntry, status: EntryStatus) -> RebaseEntry {
         status,
     }
 }
+
+impl Default for RebaseModeState {
+    fn default() -> Self {
+        Self::new()
+    }
+}

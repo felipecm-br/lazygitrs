@@ -510,7 +510,6 @@ impl EditorLaunch {
 struct EditPreset {
     edit: &'static str,
     edit_at_line: &'static str,
-    edit_at_line_and_wait: &'static str,
     open_dir_in_editor: &'static str,
     suspend: bool,
 }
@@ -521,7 +520,6 @@ fn preset_for(name: &str) -> Option<EditPreset> {
         "vim" | "nvim" | "vi" => Some(EditPreset {
             edit: "{editor} -- {{filename}}",
             edit_at_line: "{editor} +{{line}} -- {{filename}}",
-            edit_at_line_and_wait: "{editor} +{{line}} -- {{filename}}",
             open_dir_in_editor: "{editor} -- {{dir}}",
             suspend: true,
         }),
@@ -530,35 +528,30 @@ fn preset_for(name: &str) -> Option<EditPreset> {
         "helix" | "hx" => Some(EditPreset {
             edit: "hx -- {{filename}}",
             edit_at_line: "hx -- {{filename}}:{{line}}:{{column}}",
-            edit_at_line_and_wait: "hx -- {{filename}}:{{line}}:{{column}}",
             open_dir_in_editor: "hx -- {{dir}}",
             suspend: true,
         }),
         "nano" => Some(EditPreset {
             edit: "{editor} -- {{filename}}",
             edit_at_line: "{editor} +{{line}} -- {{filename}}",
-            edit_at_line_and_wait: "{editor} +{{line}} -- {{filename}}",
             open_dir_in_editor: "{editor} -- {{dir}}",
             suspend: true,
         }),
         "emacs" => Some(EditPreset {
             edit: "emacsclient --alternate-editor=emacs --no-wait -- {{filename}}",
             edit_at_line: "emacsclient --alternate-editor=emacs --no-wait +{{line}} -- {{filename}}",
-            edit_at_line_and_wait: "{editor} +{{line}} -- {{filename}}",
             open_dir_in_editor: "emacsclient --alternate-editor=emacs --no-wait -- {{dir}}",
             suspend: false,
         }),
         "vscode" | "code" => Some(EditPreset {
             edit: "code --reuse-window -- {{filename}}",
             edit_at_line: "code --reuse-window --goto -- {{filename}}:{{line}}:{{column}}",
-            edit_at_line_and_wait: "code --reuse-window --goto --wait -- {{filename}}:{{line}}:{{column}}",
             open_dir_in_editor: "code -- {{dir}}",
             suspend: false,
         }),
         "zed" | "zed.exe" => Some(EditPreset {
             edit: "zed -- {{filename}}",
             edit_at_line: "zed -- {{filename}}:{{line}}:{{column}}",
-            edit_at_line_and_wait: "zed --wait -- {{filename}}:{{line}}:{{column}}",
             open_dir_in_editor: "zed -- {{dir}}",
             suspend: false,
         }),
@@ -607,7 +600,6 @@ fn resolve_preset(os: &OsConfig) -> (EditPreset, String) {
     let preset = preset_for(preset_name).unwrap_or(EditPreset {
         edit: "{editor} -- {{filename}}",
         edit_at_line: "{editor} +{{line}} -- {{filename}}",
-        edit_at_line_and_wait: "{editor} +{{line}} -- {{filename}}",
         open_dir_in_editor: "{editor} -- {{dir}}",
         suspend: true,
     });

@@ -32,6 +32,7 @@ pub(crate) struct DecodedImage {
     pub(crate) orig_height: u32,
 }
 
+#[cfg(test)]
 impl DecodedImage {
     pub(super) fn width(&self) -> u32 {
         self.image.width()

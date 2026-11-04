@@ -37,16 +37,13 @@ jobs:
 
   clippy:
     runs-on: ubuntu-latest
-    # Non-blocking until the existing warning backlog is cleared
-    # (_docs/AUDIT-2026-11.md, P2-2); then switch to `-D warnings`.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --locked
+      - run: cargo clippy --all-targets --locked -- -D warnings
 
   advisories:
     runs-on: ubuntu-latest
