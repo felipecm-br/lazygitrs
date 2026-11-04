@@ -1135,7 +1135,7 @@ fn show_diff_mode_command_palette(gui: &mut Gui) {
             ),
             CommandEntry::keybinding(
                 format!(
-                    "{} / {}",
+                    "<c-w> h/l ({} / {})",
                     gui.config
                         .user_config
                         .keybinding
@@ -1150,12 +1150,10 @@ fn show_diff_mode_command_palette(gui: &mut Gui) {
                 "Shrink / expand sidebar (or drag its divider)".into(),
             ),
             CommandEntry::keybinding(
-                gui.config
-                    .user_config
-                    .keybinding
-                    .universal
-                    .reset_side_panel
-                    .clone(),
+                format!(
+                    "<c-w> = ({})",
+                    gui.config.user_config.keybinding.universal.reset_side_panel
+                ),
                 "Reset sidebar size".into(),
             ),
             CommandEntry::keybinding("1-5".into(), "Jump to panel (4 Commits, 5 Diff)".into()),

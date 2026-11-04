@@ -845,6 +845,10 @@ pub struct Gui {
     pub is_popup: bool,
     pub grab_column_hovered: bool,
     pub grab_column_dragging: Option<u16>,
+    /// True after pressing `Ctrl+W` while waiting for the second key of a window-resize chord (`h`/`l`/`j`/`k`/`=`).
+    pub window_prefix_armed: bool,
+    /// Timestamp of the first root-level `Esc` in full-screen mode (requires a second `Esc` within 400ms to quit).
+    pub root_esc_armed_at: Option<Instant>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1141,12 +1145,20 @@ impl Gui {
 
         let commit_history = Self::load_commit_history(&config);
 
-        // Resolve saved color theme
+        // Resolve color theme: explicit `gui.theme: <preset>` in config.yml takes precedence over saved state.yml
         let current_theme_index = config
-            .app_state
-            .color_theme
+            .user_config
+            .gui
+            .theme
+            .preset
             .as_deref()
-            .and_then(|id| crate::config::COLOR_THEMES.iter().position(|t| t.id == id))
+            .or(config.app_state.color_theme.as_deref())
+            .and_then(|id| {
+                let norm = id.trim().to_ascii_lowercase().replace('_', "-");
+                crate::config::COLOR_THEMES
+                    .iter()
+                    .position(|t| t.id == norm)
+            })
             .unwrap_or(0);
 
         let mut context_mgr = ContextManager::new();
@@ -1286,6 +1298,8 @@ impl Gui {
             is_popup,
             grab_column_hovered: false,
             grab_column_dragging: None,
+            window_prefix_armed: false,
+            root_esc_armed_at: None,
         })
     }
 
@@ -4182,7 +4196,49 @@ impl Gui {
     }
 
     /// Split-resize shortcuts shared by the main UI and compare mode.
+    /// Supports both `<c-w>` prefix chords (`<c-w> h`, `<c-w> l`, `<c-w> k`, `<c-w> j`, `<c-w> =`)
+    /// and legacy `Alt` bindings (`<a-h>`, `<a-l>`, `<a-k>`, `<a-j>`, `<a-r>`).
     fn try_handle_panel_resize_key(&mut self, key: KeyEvent) -> bool {
+        const STEP: f64 = 0.05;
+        let portrait =
+            layout::should_use_portrait(self.layout.width, self.layout.height, self.screen_mode);
+
+        if self.window_prefix_armed {
+            self.window_prefix_armed = false;
+            match (key.code, key.modifiers) {
+                (KeyCode::Char('h'), KeyModifiers::NONE | KeyModifiers::CONTROL)
+                | (KeyCode::Left, KeyModifiers::NONE) => {
+                    self.layout.side_panel_ratio =
+                        (self.layout.side_panel_ratio - STEP).clamp(0.0, 1.0);
+                }
+                (KeyCode::Char('l'), KeyModifiers::NONE | KeyModifiers::CONTROL)
+                | (KeyCode::Right, KeyModifiers::NONE) => {
+                    self.layout.side_panel_ratio =
+                        (self.layout.side_panel_ratio + STEP).clamp(0.0, 1.0);
+                }
+                (KeyCode::Char('k'), KeyModifiers::NONE | KeyModifiers::CONTROL)
+                | (KeyCode::Up, KeyModifiers::NONE) => {
+                    self.layout.side_panel_ratio = if portrait { 0.0 } else { 1.0 };
+                }
+                (KeyCode::Char('j'), KeyModifiers::NONE | KeyModifiers::CONTROL)
+                | (KeyCode::Down, KeyModifiers::NONE) => {
+                    self.layout.side_panel_ratio = if portrait { 1.0 } else { 0.0 };
+                }
+                (KeyCode::Char('=' | '0' | 'r'), KeyModifiers::NONE | KeyModifiers::CONTROL) => {
+                    self.layout.side_panel_ratio = self.config.user_config.gui.side_panel_width;
+                }
+                _ => {}
+            }
+            return true;
+        }
+
+        if key.modifiers == KeyModifiers::CONTROL
+            && matches!(key.code, KeyCode::Char('w') | KeyCode::Char('W'))
+        {
+            self.window_prefix_armed = true;
+            return true;
+        }
+
         let keybindings = &self.config.user_config.keybinding;
         // Side-panel resize: orientation-aware.
         // Portrait (vertical stack): side on top, diff on bottom.
@@ -4190,12 +4246,9 @@ impl Gui {
         //   Alt+k → diff pane full (ratio 0.0), Alt+j → side pane full (ratio 1.0)
         // Landscape (horizontal split): side on left, diff on right.
         //   Alt+h/l → shrink/expand by step, Alt+k → side full, Alt+j → main full
-        let portrait =
-            layout::should_use_portrait(self.layout.width, self.layout.height, self.screen_mode);
         let shrink_key = matches_key(key, &keybindings.universal.shrink_side_panel);
         let expand_key = matches_key(key, &keybindings.universal.expand_side_panel);
         if shrink_key || expand_key {
-            const STEP: f64 = 0.05;
             let delta = if shrink_key { -STEP } else { STEP };
             self.layout.side_panel_ratio = (self.layout.side_panel_ratio + delta).clamp(0.0, 1.0);
             return true;
@@ -4275,6 +4328,13 @@ impl Gui {
             return controller::diff_mode::handle_key(self, key);
         }
 
+        if !matches_key(
+            key,
+            &self.config.user_config.keybinding.universal.return_key,
+        ) {
+            self.root_esc_armed_at = None;
+        }
+
         if self.try_handle_panel_resize_key(key) {
             return Ok(());
         }
@@ -4314,6 +4374,25 @@ impl Gui {
             return self.handle_diff_focused_key(key);
         }
 
+        // Next/prev search match, or Esc to dismiss search results before considering root quit
+        if !self.search_query.is_empty() {
+            if key.code == KeyCode::Esc {
+                self.search_query.clear();
+                self.search_matches.clear();
+                self.search_match_idx = 0;
+                self.root_esc_armed_at = None;
+                return Ok(());
+            }
+            if matches_key(key, &keybindings.universal.next_match) {
+                self.goto_next_search_match();
+                return Ok(());
+            }
+            if matches_key(key, &keybindings.universal.prev_match) {
+                self.goto_prev_search_match();
+                return Ok(());
+            }
+        }
+
         if self.is_return_to_cockpit_key(key) {
             self.quit_reason = QuitReason::ReturnToCockpit;
             self.should_quit = true;
@@ -4329,13 +4408,25 @@ impl Gui {
             return Ok(());
         }
 
-        // Universal return_key (Esc): When at the root files list without sub-contexts,
-        // Esc dismisses the standalone popup (if launched from Cockpit, is_return_to_cockpit_key already caught it above).
+        // Universal return_key (Esc): When at the root files list without sub-contexts:
+        // - In popup / outer_frame mode, a single Esc dismisses immediately.
+        // - In full-screen mode, requires a double-tap within 400ms so unwinding from sub-views
+        //   or tapping Esc once never kills the session unexpectedly.
         if matches!(self.context_mgr.active(), ContextId::Files)
             && matches_key(key, &keybindings.universal.return_key)
         {
-            self.quit_reason = QuitReason::Normal;
-            self.should_quit = true;
+            const ROOT_ESC_DOUBLE_TAP_WINDOW: Duration = Duration::from_millis(400);
+            if self.is_popup
+                || self.outer_frame
+                || self
+                    .root_esc_armed_at
+                    .is_some_and(|t| t.elapsed() <= ROOT_ESC_DOUBLE_TAP_WINDOW)
+            {
+                self.quit_reason = QuitReason::Normal;
+                self.should_quit = true;
+            } else {
+                self.root_esc_armed_at = Some(Instant::now());
+            }
             return Ok(());
         }
 
@@ -4589,24 +4680,6 @@ impl Gui {
             ta.set_cursor_line_style(ratatui::style::Style::default());
             self.search_textarea = Some(ta);
             return Ok(());
-        }
-
-        // Next/prev search match, or Esc to dismiss search results
-        if !self.search_query.is_empty() {
-            if key.code == KeyCode::Esc {
-                self.search_query.clear();
-                self.search_matches.clear();
-                self.search_match_idx = 0;
-                return Ok(());
-            }
-            if matches_key(key, &keybindings.universal.next_match) {
-                self.goto_next_search_match();
-                return Ok(());
-            }
-            if matches_key(key, &keybindings.universal.prev_match) {
-                self.goto_prev_search_match();
-                return Ok(());
-            }
         }
 
         // Universal "I" key: interactive rebase picker
@@ -5140,6 +5213,7 @@ impl Gui {
         }
 
         if matches_key(key, &keybindings.universal.return_key) {
+            self.root_esc_armed_at = None;
             if self.diff_view.selected_note.is_some() {
                 self.diff_view.selected_note = None;
             } else if !self.diff_view.search_query.is_empty() {
@@ -7074,6 +7148,26 @@ impl Gui {
                 CommandEntry::keybinding(
                     kb.universal.prev_screen_mode.clone(),
                     "Shrink panel".into(),
+                ),
+                CommandEntry::keybinding(
+                    format!("<c-w> h / {}", kb.universal.shrink_side_panel),
+                    "Shrink side panel".into(),
+                ),
+                CommandEntry::keybinding(
+                    format!("<c-w> l / {}", kb.universal.expand_side_panel),
+                    "Expand side panel".into(),
+                ),
+                CommandEntry::keybinding(
+                    format!("<c-w> k / {}", kb.universal.side_panel_full),
+                    "Side panel full width".into(),
+                ),
+                CommandEntry::keybinding(
+                    format!("<c-w> j / {}", kb.universal.main_panel_full),
+                    "Main panel full width".into(),
+                ),
+                CommandEntry::keybinding(
+                    format!("<c-w> = / {}", kb.universal.reset_side_panel),
+                    "Reset side panel width".into(),
                 ),
                 CommandEntry::keybinding(
                     kb.universal.create_rebase_options_menu.clone(),
@@ -12556,8 +12650,11 @@ mod terminal_mouse_tests {
         assert!(matches!(gui.popup, PopupState::Input { .. }));
     }
 
+    static COCKPIT_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn return_to_cockpit_key_triggers_quit_with_cockpit_reason() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = TempRepo::new("return-to-cockpit");
         let mut config = crate::config::AppConfig::default();
         config.user_config.keybinding.universal.return_to_cockpit = "g".into();
@@ -12578,6 +12675,7 @@ mod terminal_mouse_tests {
 
     #[test]
     fn return_to_cockpit_via_env_var() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = TempRepo::new("return-to-cockpit-env");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
@@ -12608,6 +12706,7 @@ mod terminal_mouse_tests {
 
     #[test]
     fn esc_at_root_files_returns_to_cockpit_when_cockpit_env_set() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = TempRepo::new("esc-cockpit-env");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
@@ -12630,6 +12729,8 @@ mod terminal_mouse_tests {
 
     #[test]
     fn esc_at_root_files_quits_normally_when_no_cockpit_env() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
         let repo = TempRepo::new("esc-normal-quit");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
@@ -12648,6 +12749,7 @@ mod terminal_mouse_tests {
 
     #[test]
     fn esc_in_diff_unwinds_to_files_first_then_to_cockpit() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let repo = TempRepo::new("esc-diff-unwind");
         let config = crate::config::AppConfig::default();
         let git = crate::git::GitCommands::new(repo.path()).unwrap();
@@ -12733,5 +12835,133 @@ mod terminal_mouse_tests {
         assert!(gui.should_quit);
         assert_eq!(gui.quit_reason, QuitReason::Normal);
         assert_eq!(gui.quit_reason.exit_code(), 0);
+    }
+
+    #[test]
+    fn ctrl_w_prefix_resizes_side_panel_without_alt() {
+        let repo = TempRepo::new("ctrl-w-resize");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, false, None, false).unwrap();
+        gui.layout.width = 160;
+        gui.layout.height = 40;
+        let initial = gui.layout.side_panel_ratio;
+
+        // Ctrl+W l expands side panel by 0.05
+        gui.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        gui.handle_key(KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE))
+            .unwrap();
+        assert!((gui.layout.side_panel_ratio - (initial + 0.05)).abs() < 1e-6);
+
+        // Ctrl+W h shrinks side panel by 0.05
+        gui.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        gui.handle_key(KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE))
+            .unwrap();
+        assert!((gui.layout.side_panel_ratio - initial).abs() < 1e-6);
+
+        // Ctrl+W k maximizes side panel in landscape
+        gui.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        gui.handle_key(KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE))
+            .unwrap();
+        assert!((gui.layout.side_panel_ratio - 1.0).abs() < 1e-6);
+
+        // Ctrl+W j maximizes main panel in landscape
+        gui.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        gui.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(gui.layout.side_panel_ratio.abs() < 1e-6);
+
+        // Ctrl+W = resets side panel width
+        gui.handle_key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL))
+            .unwrap();
+        gui.handle_key(KeyEvent::new(KeyCode::Char('='), KeyModifiers::NONE))
+            .unwrap();
+        assert!(
+            (gui.layout.side_panel_ratio - gui.config.user_config.gui.side_panel_width).abs()
+                < 1e-6
+        );
+    }
+
+    #[test]
+    fn fullscreen_single_esc_at_root_does_not_quit_double_tap_quits() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+        let repo = TempRepo::new("fullscreen-esc-double-tap");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        // is_popup = false, outer_frame = false -> full-screen mode
+        let mut gui = Gui::new(config, git, false, None, false, None, false).unwrap();
+        gui.outer_frame = false;
+
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+
+        // First Esc in full-screen mode must NOT quit
+        gui.handle_key(esc_key).unwrap();
+        assert!(!gui.should_quit);
+        assert!(gui.root_esc_armed_at.is_some());
+
+        // If another key is pressed in between, the double-tap window disarms
+        gui.handle_key(KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE))
+            .unwrap();
+        assert!(gui.root_esc_armed_at.is_none());
+
+        // Single Esc again -> still does not quit
+        gui.handle_key(esc_key).unwrap();
+        assert!(!gui.should_quit);
+
+        // Second Esc within 400ms -> quits cleanly
+        gui.handle_key(esc_key).unwrap();
+        assert!(gui.should_quit);
+        assert_eq!(gui.quit_reason, QuitReason::Normal);
+    }
+
+    #[test]
+    fn fullscreen_esc_unwinding_diff_does_not_arm_root_quit() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+        let repo = TempRepo::new("fullscreen-esc-unwind-diff");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        let mut gui = Gui::new(config, git, false, None, false, None, false).unwrap();
+        gui.outer_frame = false;
+        gui.diff_focused = true;
+
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+
+        // 1st Esc unwinds diff focus
+        gui.handle_key(esc_key).unwrap();
+        assert!(!gui.diff_focused);
+        assert!(!gui.should_quit);
+        assert!(gui.root_esc_armed_at.is_none());
+
+        // 2nd Esc at root Files only arms root quit (does NOT immediately quit after unwinding)
+        gui.handle_key(esc_key).unwrap();
+        assert!(!gui.should_quit);
+        assert!(gui.root_esc_armed_at.is_some());
+    }
+
+    #[test]
+    fn esc_at_root_files_clears_active_search_before_quitting() {
+        let _env_guard = COCKPIT_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        unsafe { std::env::remove_var("LAZYGITRS_COCKPIT") };
+        let repo = TempRepo::new("esc-clears-search-first");
+        let config = crate::config::AppConfig::default();
+        let git = crate::git::GitCommands::new(repo.path()).unwrap();
+        // Even in popup mode, Esc should clear an active search query before quitting
+        let mut gui = Gui::new(config, git, false, None, true, None, false).unwrap();
+        gui.search_query = "main".to_string();
+
+        let esc_key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        gui.handle_key(esc_key).unwrap();
+        assert!(!gui.should_quit);
+        assert!(gui.search_query.is_empty());
+
+        // Now that search is cleared, next Esc in popup mode quits
+        gui.handle_key(esc_key).unwrap();
+        assert!(gui.should_quit);
     }
 }

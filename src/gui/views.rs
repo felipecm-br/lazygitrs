@@ -1884,7 +1884,8 @@ fn render_commit_list_ctx(
         return;
     }
 
-    let visible_height = block.inner(rect).height as usize;
+    let inner = block.inner(rect);
+    let visible_height = inner.height as usize;
     if visible_height == 0 {
         frame.render_widget(block, rect);
         return;
@@ -1917,6 +1918,9 @@ fn render_commit_list_ctx(
             cache,
         )
     };
+    let range_style = Style::default()
+        .bg(theme.selected_bg)
+        .add_modifier(theme.selected_line.add_modifier);
     let visible_items: Vec<ListItem> = items
         .into_iter()
         .enumerate()
@@ -1925,7 +1929,7 @@ fn render_commit_list_ctx(
             if is_active && idx == selected {
                 item.style(theme.selected_line)
             } else if is_active && range.is_some_and(|(lo, hi)| idx >= lo && idx <= hi) {
-                item.style(Style::default().bg(theme.selected_bg))
+                item.style(range_style)
             } else {
                 item
             }
@@ -1937,6 +1941,15 @@ fn render_commit_list_ctx(
         theme.inactive_border
     };
     frame.render_widget(List::new(visible_items).block(block), rect);
+    if let Some(gutter_color) = theme.selection_gutter {
+        let selected_row = if is_active && selected >= offset && selected < offset + visible_height
+        {
+            Some(inner.y + (selected - offset) as u16)
+        } else {
+            None
+        };
+        paint_selection_gutter(frame.buffer_mut(), inner, selected_row, gutter_color);
+    }
     super::scroll::render_scrollbar(
         frame.buffer_mut(),
         rect,
@@ -1946,6 +1959,60 @@ fn render_commit_list_ctx(
         false,
         border_style,
     );
+}
+
+/// Paint a 1-cell selection gutter at `inner.x` (`X=1` inside a bordered list panel)
+/// for zero-background themes like `cockpit`.
+/// If any visible row in `inner` starts with a non-space character at `inner.x`,
+/// shifts all rows in `inner` right by 1 column first so the gutter never overwrites text.
+fn paint_selection_gutter(
+    buf: &mut ratatui::buffer::Buffer,
+    inner: Rect,
+    selected_row: Option<u16>,
+    gutter_color: ratatui::style::Color,
+) {
+    if inner.width < 2 || inner.height == 0 {
+        return;
+    }
+    let buf_area = *buf.area();
+    let max_x = (inner.x + inner.width).min(buf_area.x + buf_area.width);
+    let max_y = (inner.y + inner.height).min(buf_area.y + buf_area.height);
+    if inner.x >= max_x || inner.y >= max_y {
+        return;
+    }
+
+    let needs_shift = (inner.y..max_y).any(|y| {
+        buf.cell((inner.x, y))
+            .is_some_and(|c| c.symbol() != " " && !c.symbol().is_empty())
+    });
+
+    if needs_shift {
+        for y in inner.y..max_y {
+            for x in (inner.x + 1..max_x).rev() {
+                if let Some(prev) = buf.cell((x - 1, y)).cloned() {
+                    if let Some(cur) = buf.cell_mut((x, y)) {
+                        *cur = prev;
+                    }
+                }
+            }
+            if let Some(first) = buf.cell_mut((inner.x, y)) {
+                first.set_symbol(" ");
+            }
+        }
+    }
+
+    if let Some(sel_y) = selected_row {
+        if sel_y >= inner.y && sel_y < max_y {
+            if let Some(cell) = buf.cell_mut((inner.x, sel_y)) {
+                cell.set_symbol("│");
+                cell.set_style(
+                    Style::default()
+                        .fg(gutter_color)
+                        .add_modifier(ratatui::style::Modifier::BOLD),
+                );
+            }
+        }
+    }
 }
 
 /// Highlight contiguous `/` search matches in a list panel (lazygit-style).
@@ -2052,6 +2119,9 @@ fn render_list_with_range_raw(
     let offset = *scroll_offset;
     let total_len = items.len();
 
+    let range_style = Style::default()
+        .bg(theme.selected_bg)
+        .add_modifier(theme.selected_line.add_modifier);
     let visible_items: Vec<ListItem> = items
         .into_iter()
         .skip(offset)
@@ -2062,7 +2132,7 @@ fn render_list_with_range_raw(
             if is_active && idx == selected {
                 item.style(theme.selected_line)
             } else if is_active && range.is_some_and(|(lo, hi)| idx >= lo && idx <= hi) {
-                item.style(Style::default().bg(theme.selected_bg))
+                item.style(range_style)
             } else {
                 item
             }
@@ -2075,6 +2145,15 @@ fn render_list_with_range_raw(
     };
     let list = List::new(visible_items).block(block);
     frame.render_widget(list, rect);
+    if let Some(gutter_color) = theme.selection_gutter {
+        let selected_row = if is_active && selected >= offset && selected < offset + visible_height
+        {
+            Some(inner.y + (selected - offset) as u16)
+        } else {
+            None
+        };
+        paint_selection_gutter(frame.buffer_mut(), inner, selected_row, gutter_color);
+    }
     super::scroll::render_scrollbar(
         frame.buffer_mut(),
         rect,
@@ -2322,12 +2401,14 @@ fn render_search_bar_or_status_bar(
     }
 }
 
+const MAX_STATUS_BAR_HINTS: usize = 7;
+
 fn render_status_bar(
     frame: &mut Frame,
     rect: Rect,
     ctx_mgr: &ContextManager,
     diff_view: &DiffViewState,
-    _theme: &crate::config::Theme,
+    theme: &crate::config::Theme,
     model: &Model,
     diff_focused: bool,
     has_copied_commits: bool,
@@ -2335,10 +2416,11 @@ fn render_status_bar(
     has_active_filters: bool,
 ) {
     let mut hints: Vec<(&str, &str)> = Vec::new();
-    let mut emphasized: Vec<&str> = Vec::new();
     let open_log_menu_key = format_key_hint(&keybindings.commits.open_log_menu);
     let toggle_head_key = format_key_hint(&keybindings.universal.toggle_working_tree_and_head);
+    let commit_key = format_key_hint(&keybindings.files.commit_changes);
     let ai_commit_key = format_key_hint(&keybindings.files.generate_ai_commit);
+    let quick_ai_note_key = format_key_hint(&keybindings.universal.quick_ai_note);
     let return_to_cockpit_key = if !keybindings.universal.return_to_cockpit.is_empty() {
         Some(format_key_hint(&keybindings.universal.return_to_cockpit))
     } else if std::env::var("LAZYGITRS_COCKPIT").is_ok() {
@@ -2357,11 +2439,10 @@ fn render_status_bar(
     }
 
     if diff_view.selected_note.is_some() {
-        hints.insert(0, ("enter/o", "view note details"));
+        hints.insert(0, ("enter", "view note details"));
         hints.insert(1, ("y", "copy note"));
         hints.insert(2, ("S", "send to AI"));
         hints.insert(3, ("r", "reset status"));
-        emphasized.push("enter/o");
     }
 
     if diff_focused && !diff_view.is_empty() {
@@ -2378,14 +2459,12 @@ fn render_status_bar(
                 idx += 1;
             }
             hints.insert(idx, ("space", "stage hunk"));
-            emphasized.push("space");
             idx += 1;
             if has_selection {
                 hints.insert(idx, ("enter", "hunk menu"));
-                emphasized.push("enter");
                 idx += 1;
             }
-            hints.insert(idx, ("{/}", "cycle hunks"));
+            hints.insert(idx, ("{ }", "cycle hunks"));
             idx += 1;
             if has_undo {
                 hints.insert(idx, ("u", "undo revert"));
@@ -2397,10 +2476,12 @@ fn render_status_bar(
             {
                 hints.push((toggle_head_key.as_str(), "files"));
             }
-            hints.push(("{/}", "prev/next hunk"));
+            hints.push(("{ }", "prev/next hunk"));
         }
-        hints.push(("[/]", "side view"));
-        hints.push(("<c-n>", "agent note"));
+        hints.push(("[ ]", "side view"));
+        if !quick_ai_note_key.is_empty() {
+            hints.push((quick_ai_note_key.as_str(), "agent note"));
+        }
         let view_layout_hint = match diff_view.view_layout {
             DiffViewLayout::SideBySide => "unified view",
             DiffViewLayout::Unified => "split view",
@@ -2417,13 +2498,17 @@ fn render_status_bar(
                 if !toggle_head_key.is_empty() {
                     hints.push((toggle_head_key.as_str(), "head"));
                 }
-                hints.push(("c", "commit"));
+                if !commit_key.is_empty() {
+                    hints.push((commit_key.as_str(), "commit"));
+                }
                 if !ai_commit_key.is_empty() {
                     hints.push((ai_commit_key.as_str(), "ai commit"));
                 }
+                hints.push(("a", "stage all"));
+                if !quick_ai_note_key.is_empty() {
+                    hints.push((quick_ai_note_key.as_str(), "agent note"));
+                }
                 hints.extend([
-                    ("a", "stage all"),
-                    ("<c-n>", "agent note"),
                     ("space", "toggle"),
                     ("`", "tree"),
                     ("\\", view_layout_hint),
@@ -2477,16 +2562,16 @@ fn render_status_bar(
                 if has_copied_commits {
                     hints.push(("V", "paste (cherry-pick)"));
                 }
-                hints.extend([
-                    ("C", "copy (cherry-pick)"),
-                    ("r", "reword"),
-                    ("g", "reset"),
-                    ("t", "revert"),
-                    ("\\", view_layout_hint),
-                ]);
                 if !open_log_menu_key.is_empty() {
                     hints.push((open_log_menu_key.as_str(), "filter branch"));
                 }
+                hints.extend([
+                    ("r", "reword"),
+                    ("g", "reset"),
+                    ("C", "copy (cherry-pick)"),
+                    ("t", "revert"),
+                    ("\\", view_layout_hint),
+                ]);
                 hints.push(("a", "toggle log view"));
             }
             ContextId::Stash => {
@@ -2537,8 +2622,8 @@ fn render_status_bar(
             _ => {}
         }
         if !diff_view.is_empty() {
-            hints.push(("J/K", "scroll diff"));
-            hints.push(("{/}", "hunks"));
+            hints.push(("J K", "scroll diff"));
+            hints.push(("{ }", "hunks"));
         }
     }
 
@@ -2547,33 +2632,39 @@ fn render_status_bar(
         hints.push((k.as_str(), "cockpit"));
     }
     hints.extend([
+        ("?", "help"),
+        ("ctrl+w", "resize"),
         ("q", "quit"),
         (":", "shell"),
-        ("tab/1-5", "panels"),
-        ("j/k", "nav"),
+        ("tab 1-5", "panels"),
+        ("j k", "nav"),
     ]);
 
+    if hints.len() > MAX_STATUS_BAR_HINTS {
+        hints.truncate(MAX_STATUS_BAR_HINTS - 1);
+        if let Some(ref k) = return_to_cockpit_key {
+            hints.push((k.as_str(), "cockpit"));
+        } else {
+            hints.push(("?", "help"));
+        }
+    }
+
     let key_style = Style::default()
-        .fg(_theme.text)
+        .fg(theme.accent)
         .add_modifier(ratatui::style::Modifier::BOLD);
-    let key_emphasis_style = Style::default()
-        .fg(_theme.accent)
-        .add_modifier(ratatui::style::Modifier::BOLD);
-    let desc_style = Style::default().fg(_theme.text_dimmed);
-    let spans: Vec<Span> = hints
-        .iter()
-        .flat_map(|(key, desc)| {
-            let style = if emphasized.contains(key) {
-                key_emphasis_style
-            } else {
-                key_style
-            };
-            vec![
-                Span::styled(format!(" {} ", key), style),
-                Span::styled(format!("{} ", desc), desc_style),
-            ]
-        })
-        .collect();
+    let desc_style = Style::default().fg(theme.text_dimmed);
+    let sep_style = Style::default().fg(theme.text_dimmed);
+
+    let mut spans: Vec<Span> = Vec::with_capacity(hints.len() * 3);
+    for (idx, (key, desc)) in hints.iter().enumerate() {
+        if idx == 0 {
+            spans.push(Span::styled(format!(" {} ", key), key_style));
+        } else {
+            spans.push(Span::styled(" │ ", sep_style));
+            spans.push(Span::styled(format!("{} ", key), key_style));
+        }
+        spans.push(Span::styled((*desc).to_string(), desc_style));
+    }
 
     let bar = Paragraph::new(Line::from(spans));
     frame.render_widget(bar, rect);
@@ -4998,5 +5089,157 @@ mod tests {
             "expected 'filter branch' in status bar: {}",
             content
         );
+    }
+
+    #[test]
+    fn status_bar_snapshot_per_context_caps_at_seven_pairs_with_separators_and_dynamic_keys() {
+        use super::{DiffViewState, MAX_STATUS_BAR_HINTS, render_status_bar};
+        use crate::config::KeybindingConfig;
+        use crate::gui::context::{ContextId, ContextManager};
+        use crate::model::Model;
+
+        let backend = TestBackend::new(160, 1);
+        let mut terminal = Terminal::new(backend).expect("should create test terminal");
+        let theme = crate::config::Theme::cockpit();
+        let model = Model::default();
+        let mut diff_view = DiffViewState::new();
+        diff_view.load_from_diff_output("src/main.rs", "@@ -1,1 +1,1 @@\n-old\n+new\n");
+
+        let mut keybindings = KeybindingConfig::default();
+        keybindings.files.commit_changes = "C".to_string();
+        keybindings.universal.quick_ai_note = "<c-a>".to_string();
+
+        let contexts = [
+            ContextId::Files,
+            ContextId::Commits,
+            ContextId::Branches,
+            ContextId::Stash,
+            ContextId::Tags,
+            ContextId::Worktrees,
+            ContextId::Status,
+        ];
+
+        for ctx in contexts {
+            let mut ctx_mgr = ContextManager::new();
+            ctx_mgr.set_active(ctx);
+            terminal
+                .draw(|frame| {
+                    render_status_bar(
+                        frame,
+                        Rect::new(0, 0, 160, 1),
+                        &ctx_mgr,
+                        &diff_view,
+                        &theme,
+                        &model,
+                        false,
+                        false,
+                        &keybindings,
+                        false,
+                    );
+                })
+                .expect("should render status bar");
+
+            let buffer = terminal.backend().buffer();
+            let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+            let trimmed = content.trim_end();
+            let segments: Vec<&str> = trimmed.split(" │ ").collect();
+            assert!(
+                segments.len() <= MAX_STATUS_BAR_HINTS,
+                "context {:?} exceeded {} pairs ({}): {}",
+                ctx,
+                MAX_STATUS_BAR_HINTS,
+                segments.len(),
+                trimmed
+            );
+            assert!(
+                !trimmed.contains("[/]") && !trimmed.contains("{/}") && !trimmed.contains("<c-n>"),
+                "context {:?} has legacy ambiguous hint label: {}",
+                ctx,
+                trimmed
+            );
+
+            if ctx == ContextId::Files {
+                assert!(
+                    trimmed.contains("C commit"),
+                    "Files status bar should reflect remapped commit_changes key: {}",
+                    trimmed
+                );
+                assert!(
+                    trimmed.contains("ctrl+a agent note"),
+                    "Files status bar should reflect remapped quick_ai_note key: {}",
+                    trimmed
+                );
+            }
+        }
+
+        // Also verify diff-focused Files uses `[ ] side view` and `{ } cycle hunks`
+        let mut ctx_mgr = ContextManager::new();
+        ctx_mgr.set_active(ContextId::Files);
+        terminal
+            .draw(|frame| {
+                render_status_bar(
+                    frame,
+                    Rect::new(0, 0, 160, 1),
+                    &ctx_mgr,
+                    &diff_view,
+                    &theme,
+                    &model,
+                    true,
+                    false,
+                    &keybindings,
+                    false,
+                );
+            })
+            .expect("should render diff-focused status bar");
+        let buffer = terminal.backend().buffer();
+        let content: String = buffer.content().iter().map(|c| c.symbol()).collect();
+        let trimmed = content.trim_end();
+        assert!(trimmed.contains("{ } cycle hunks"), "got: {}", trimmed);
+        assert!(trimmed.contains("[ ] side view"), "got: {}", trimmed);
+        assert!(trimmed.contains("ctrl+a agent note"), "got: {}", trimmed);
+        assert!(trimmed.split(" │ ").count() <= MAX_STATUS_BAR_HINTS);
+    }
+
+    #[test]
+    fn cockpit_theme_paints_cyan_selection_gutter_at_x_equals_1() {
+        use super::render_list_with_range_raw;
+        use ratatui::text::Line;
+        use ratatui::widgets::{Block, Borders, ListItem};
+
+        let backend = TestBackend::new(40, 6);
+        let mut terminal = Terminal::new(backend).expect("should create test terminal");
+        let theme = crate::config::Theme::cockpit();
+        let items = vec![
+            ListItem::new(Line::from("first item")),
+            ListItem::new(Line::from("second item")),
+        ];
+        let mut scroll_offset = 0;
+
+        terminal
+            .draw(|frame| {
+                let block = Block::default().borders(Borders::ALL).title("Files");
+                render_list_with_range_raw(
+                    frame,
+                    Rect::new(0, 0, 40, 6),
+                    block,
+                    items.clone(),
+                    1,
+                    true,
+                    &theme,
+                    None,
+                    &mut scroll_offset,
+                    true,
+                );
+            })
+            .expect("should render list with cockpit gutter");
+
+        let buf = terminal.backend().buffer();
+        // Row y=1 is item 0 (unselected -> space in X=1 gutter, shifted text starts at X=2)
+        assert_eq!(buf[(1, 1)].symbol(), " ");
+        assert_eq!(buf[(2, 1)].symbol(), "f");
+        // Row y=2 is item 1 (selected -> cyan '│' at X=1, shifted text starts at X=2)
+        assert_eq!(buf[(1, 2)].symbol(), "│");
+        assert_eq!(buf[(1, 2)].fg, theme.selection_gutter.unwrap());
+        assert_eq!(buf[(2, 2)].symbol(), "s");
     }
 }
