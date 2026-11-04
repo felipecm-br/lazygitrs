@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.
 
 ### Performance
 
+- Idle CPU down ~90% (68 → 7 process ticks per 20s): the input thread no longer polls every 50ms. That poll busy-spun ~1ms per call because of a timeout-truncation bug on crossterm's `use-dev-tty` backend; `pause()` now wakes the reader explicitly. The main loop wakes on demand (16ms busy, 50ms after input, up to 1s idle) instead of every 50ms
+- Interval refresh reloads only files and diff stats unless git metadata changed (stat-only fingerprint of HEAD, refs, stash, rebase/merge state); idle git processes per 30s: 104 → 21
+- Submodule add/update run in the background with a spinner instead of freezing the UI
 - Periodic auto-refresh no longer re-arms while a refresh is in flight, which ran every full reload twice
 - Remote tag names (`git ls-remote --tags`) are cached for the session and refreshed only after fetch/pull/push/remote edits, so idle refreshes no longer touch the network; remotes are queried in parallel and timed-out `git`/`ssh` processes are killed
 
