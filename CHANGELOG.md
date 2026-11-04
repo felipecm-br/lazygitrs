@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 
 ### Bug Fixes
 
+- If any part of a model load failed (for example a transient git error during startup), the load never completed, and lazygitrs silently stopped auto-refreshing for the rest of the session. A load now completes once every loader has finished, and a failed part keeps its previous data and is logged under `--debug`
 - Status bar no longer shows `? help` twice when a context has more than 7 hints; the freed slot shows another hint
 - Auto-fetch no longer forces a full reload plus two network `ls-remote` calls every minute. `git fetch --all` always prints `Fetching <remote>` when there are several remotes, and that was counted as a change. A no-op fetch also bumped ref-directory mtimes, which tripped the refs fingerprint
 - `Ctrl+G` / `Ctrl+N` are no longer hardcoded alongside `toggleWorkingTreeAndHead` / `quickAiNote`, so remapping them frees the keys

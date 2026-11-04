@@ -251,10 +251,16 @@ impl GitCommands {
             ($tx:expr, $self:expr, $variant:ident, $expr:expr) => {{
                 let tx = $tx.clone();
                 let git = Arc::clone($self);
-                std::thread::spawn(move || {
-                    if let Ok(data) = $expr(&git) {
+                std::thread::spawn(move || match $expr(&git) {
+                    Ok(data) => {
                         let _ = tx.send(ModelPart::$variant(data));
                     }
+                    // The receiver finishes the load when all senders drop, so
+                    // a failed part only leaves its previous data in place.
+                    Err(err) => tracing::warn!(
+                        "model part {} failed to load: {err:#}",
+                        stringify!($variant)
+                    ),
                 });
             }};
         }

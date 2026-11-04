@@ -348,3 +348,32 @@ fn busy_checkout_does_not_change_head_or_pending_checkout() {
         }
     }
 }
+
+/// A load part that fails sends nothing. Once every sender is gone the load
+/// must still finish; otherwise `refresh_in_progress` stays set and every
+/// later refresh and interval tick is skipped for the rest of the session.
+#[test]
+fn refresh_completes_when_a_model_part_never_arrives() {
+    let repo = TempRepo::new("refresh-missing-part");
+    let mut gui = checkout_test_gui(&repo);
+    let (model_tx, model_rx) = mpsc::channel();
+    gui.initial_load_rx = Some(model_rx);
+    gui.initial_load_received = 0;
+    gui.refresh_in_progress = true;
+
+    // Every part except one arrives, then all senders drop.
+    model_tx
+        .send(ModelPart::Head {
+            hash: repo.git(&["rev-parse", "HEAD"]),
+            branch_name: "main".into(),
+        })
+        .unwrap();
+    gui.receive_initial_load_parts();
+    assert!(gui.refresh_in_progress, "still waiting while senders live");
+    assert!(gui.initial_load_rx.is_some());
+
+    drop(model_tx);
+    gui.receive_initial_load_parts();
+    assert!(!gui.refresh_in_progress, "disconnect must finish the load");
+    assert!(gui.initial_load_rx.is_none());
+}

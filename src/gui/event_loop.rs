@@ -414,146 +414,7 @@ impl Gui {
             false => None,
         };
         loop {
-            // Drain any model parts that have arrived from the background load.
-            if let Some(rx) = &self.initial_load_rx {
-                let mut got_files = false;
-                let mut got_rebase_in_progress = false;
-                let received_before = self.initial_load_received;
-                while let Ok(part) = rx.try_recv() {
-                    let mut model = self
-                        .model
-                        .lock()
-                        .unwrap_or_else(std::sync::PoisonError::into_inner);
-                    match part {
-                        ModelPart::Files(v) => {
-                            model.set_files(v);
-                            got_files = true;
-                        }
-                        ModelPart::Branches(v) => model.branches = v,
-                        ModelPart::Commits(v) => {
-                            // Stream already applies the active filter when one is set
-                            // (`load_model_streaming(commit_filter)`), so always take it.
-                            self.commit_history_complete = v.len() < DEFAULT_COMMIT_LIMIT;
-                            model.set_commits(v);
-                        }
-                        ModelPart::Stash(v) => model.stash_entries = v,
-                        ModelPart::Remotes(v) => model.remotes = v,
-                        ModelPart::Tags(v) => model.tags = v,
-                        ModelPart::Worktrees(v) => model.worktrees = v,
-                        ModelPart::Submodules(v) => model.submodules = v,
-                        ModelPart::Reflog(v) => model.reflog_commits = v,
-                        ModelPart::DiffStats { added, deleted } => {
-                            model.total_additions = added;
-                            model.total_deletions = deleted;
-                        }
-                        ModelPart::RepoStatus {
-                            is_rebasing,
-                            is_merging,
-                            is_cherry_picking,
-                            is_bisecting,
-                            rebase_onto_hash,
-                        } => {
-                            model.is_rebasing = is_rebasing;
-                            model.is_merging = is_merging;
-                            model.is_cherry_picking = is_cherry_picking;
-                            model.is_bisecting = is_bisecting;
-                            model.rebase_onto_hash = rebase_onto_hash;
-                            if is_rebasing {
-                                got_rebase_in_progress = true;
-                            }
-                        }
-                        ModelPart::Head { hash, branch_name } => {
-                            model.head_hash = hash;
-                            model.head_branch_name = branch_name;
-                        }
-                        ModelPart::RepoUrl(url) => model.repo_url = url,
-                        ModelPart::Contributors(c) => model.contributors = c,
-                    }
-                    self.initial_load_received += 1;
-                }
-                // Enter the InProgress rebase view as soon as we know a rebase
-                // is on disk — don't wait for a future `refresh()` tick (focus
-                // event / auto-refresh interval), which is what made the view
-                // pop in ~0.8s after the default screen appeared on startup.
-                if got_rebase_in_progress
-                    && !self.rebase_mode.active
-                    && !self.rebase_mode.in_progress_dismissed
-                {
-                    self.sync_rebase_progress_view();
-                }
-                // Rebuild file tree if files arrived this frame.
-                if got_files {
-                    if self.show_file_tree {
-                        let model = self
-                            .model
-                            .lock()
-                            .unwrap_or_else(std::sync::PoisonError::into_inner);
-                        self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
-                        self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
-                    }
-                    if self.start_in_diff {
-                        self.start_in_diff = false;
-                        self.diff_focused = true;
-                        self.screen_mode = ScreenMode::Full;
-                        if !self.diff_view.hunk_starts.is_empty() {
-                            self.diff_view.selected_revert_hunk = Some(0);
-                        }
-
-                        if let Some(ref target_file) = self.start_file_filter {
-                            let model = self
-                                .model
-                                .lock()
-                                .unwrap_or_else(std::sync::PoisonError::into_inner);
-                            if self.show_file_tree {
-                                if let Some(idx) = self
-                                    .file_tree_nodes
-                                    .iter()
-                                    .position(|n| !n.is_dir && n.path == *target_file)
-                                {
-                                    self.context_mgr
-                                        .set_selected(crate::gui::context::ContextId::Files, idx);
-                                }
-                            } else {
-                                if let Some(idx) =
-                                    model.files.iter().position(|f| f.name == *target_file)
-                                {
-                                    self.context_mgr.set_selected(
-                                        crate::gui::context::ContextId::Files,
-                                        idx + 1,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                // Trigger a diff reload when new data arrived THIS frame.
-                // (A cumulative `> 0` check here re-requested the same diff
-                // every frame for the whole stream, and each request's
-                // generation bump invalidated the in-flight result — diffs
-                // only settled once streaming finished.)
-                if self.initial_load_received > received_before {
-                    self.needs_diff_refresh = true;
-                }
-                // All parts received — done loading.
-                if self.initial_load_received >= MODEL_PART_COUNT {
-                    self.initial_load_rx = None;
-                    let was_refresh = self.refresh_in_progress;
-                    self.refresh_in_progress = false;
-                    // Leave needs_refresh alone: if another mutation arrived
-                    // mid-refresh it will re-queue on the next frame.
-                    self.needs_files_refresh = false;
-                    self.needs_diff_refresh = true;
-                    self.last_refresh_at = Instant::now();
-                    // Re-apply filters / selection-dependent views after stream
-                    // completes (initial load and background refresh). Needed so
-                    // startup `-f/--filter` takes effect once commits arrive.
-                    if (was_refresh || self.commit_filter.is_active())
-                        && let Err(err) = self.after_model_refresh()
-                    {
-                        self.show_error("Refresh failed", err);
-                    }
-                }
-            }
+            self.receive_initial_load_parts();
 
             // Request diff loading on background thread if selection changed
             self.maybe_request_diff();
@@ -685,6 +546,161 @@ impl Gui {
         }
 
         Ok(())
+    }
+
+    /// Apply model parts streamed by the initial load / background refresh,
+    /// and finish the load once all parts arrived or all senders are gone.
+    pub(super) fn receive_initial_load_parts(&mut self) {
+        if let Some(rx) = &self.initial_load_rx {
+            let mut got_files = false;
+            let mut got_rebase_in_progress = false;
+            let received_before = self.initial_load_received;
+            // All sender threads gone: every part either arrived or failed.
+            // A failed (or panicked) part sends nothing, so counting alone
+            // would leave the load open forever and block every later
+            // refresh and interval tick.
+            let mut disconnected = false;
+            loop {
+                let part = match rx.try_recv() {
+                    Ok(part) => part,
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        disconnected = true;
+                        break;
+                    }
+                };
+                let mut model = self
+                    .model
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                match part {
+                    ModelPart::Files(v) => {
+                        model.set_files(v);
+                        got_files = true;
+                    }
+                    ModelPart::Branches(v) => model.branches = v,
+                    ModelPart::Commits(v) => {
+                        // Stream already applies the active filter when one is set
+                        // (`load_model_streaming(commit_filter)`), so always take it.
+                        self.commit_history_complete = v.len() < DEFAULT_COMMIT_LIMIT;
+                        model.set_commits(v);
+                    }
+                    ModelPart::Stash(v) => model.stash_entries = v,
+                    ModelPart::Remotes(v) => model.remotes = v,
+                    ModelPart::Tags(v) => model.tags = v,
+                    ModelPart::Worktrees(v) => model.worktrees = v,
+                    ModelPart::Submodules(v) => model.submodules = v,
+                    ModelPart::Reflog(v) => model.reflog_commits = v,
+                    ModelPart::DiffStats { added, deleted } => {
+                        model.total_additions = added;
+                        model.total_deletions = deleted;
+                    }
+                    ModelPart::RepoStatus {
+                        is_rebasing,
+                        is_merging,
+                        is_cherry_picking,
+                        is_bisecting,
+                        rebase_onto_hash,
+                    } => {
+                        model.is_rebasing = is_rebasing;
+                        model.is_merging = is_merging;
+                        model.is_cherry_picking = is_cherry_picking;
+                        model.is_bisecting = is_bisecting;
+                        model.rebase_onto_hash = rebase_onto_hash;
+                        if is_rebasing {
+                            got_rebase_in_progress = true;
+                        }
+                    }
+                    ModelPart::Head { hash, branch_name } => {
+                        model.head_hash = hash;
+                        model.head_branch_name = branch_name;
+                    }
+                    ModelPart::RepoUrl(url) => model.repo_url = url,
+                    ModelPart::Contributors(c) => model.contributors = c,
+                }
+                self.initial_load_received += 1;
+            }
+            // Enter the InProgress rebase view as soon as we know a rebase
+            // is on disk — don't wait for a future `refresh()` tick (focus
+            // event / auto-refresh interval), which is what made the view
+            // pop in ~0.8s after the default screen appeared on startup.
+            if got_rebase_in_progress
+                && !self.rebase_mode.active
+                && !self.rebase_mode.in_progress_dismissed
+            {
+                self.sync_rebase_progress_view();
+            }
+            // Rebuild file tree if files arrived this frame.
+            if got_files {
+                if self.show_file_tree {
+                    let model = self
+                        .model
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
+                    self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
+                }
+                if self.start_in_diff {
+                    self.start_in_diff = false;
+                    self.diff_focused = true;
+                    self.screen_mode = ScreenMode::Full;
+                    if !self.diff_view.hunk_starts.is_empty() {
+                        self.diff_view.selected_revert_hunk = Some(0);
+                    }
+
+                    if let Some(ref target_file) = self.start_file_filter {
+                        let model = self
+                            .model
+                            .lock()
+                            .unwrap_or_else(std::sync::PoisonError::into_inner);
+                        if self.show_file_tree {
+                            if let Some(idx) = self
+                                .file_tree_nodes
+                                .iter()
+                                .position(|n| !n.is_dir && n.path == *target_file)
+                            {
+                                self.context_mgr
+                                    .set_selected(crate::gui::context::ContextId::Files, idx);
+                            }
+                        } else {
+                            if let Some(idx) =
+                                model.files.iter().position(|f| f.name == *target_file)
+                            {
+                                self.context_mgr
+                                    .set_selected(crate::gui::context::ContextId::Files, idx + 1);
+                            }
+                        }
+                    }
+                }
+            }
+            // Trigger a diff reload when new data arrived THIS frame.
+            // (A cumulative `> 0` check here re-requested the same diff
+            // every frame for the whole stream, and each request's
+            // generation bump invalidated the in-flight result — diffs
+            // only settled once streaming finished.)
+            if self.initial_load_received > received_before {
+                self.needs_diff_refresh = true;
+            }
+            // All parts received — done loading.
+            if self.initial_load_received >= MODEL_PART_COUNT || disconnected {
+                self.initial_load_rx = None;
+                let was_refresh = self.refresh_in_progress;
+                self.refresh_in_progress = false;
+                // Leave needs_refresh alone: if another mutation arrived
+                // mid-refresh it will re-queue on the next frame.
+                self.needs_files_refresh = false;
+                self.needs_diff_refresh = true;
+                self.last_refresh_at = Instant::now();
+                // Re-apply filters / selection-dependent views after stream
+                // completes (initial load and background refresh). Needed so
+                // startup `-f/--filter` takes effect once commits arrive.
+                if (was_refresh || self.commit_filter.is_active())
+                    && let Err(err) = self.after_model_refresh()
+                {
+                    self.show_error("Refresh failed", err);
+                }
+            }
+        }
     }
 
     /// Background auto-refresh on `refresher.refreshInterval` (0 = disabled).
