@@ -5,6 +5,7 @@ pub mod commit;
 pub mod diff;
 pub(crate) mod diff_paths;
 pub mod file;
+pub mod fingerprint;
 pub mod loader;
 pub mod rebase;
 pub mod remote;
@@ -75,6 +76,9 @@ pub struct HeadState {
 struct RepoPaths {
     worktree_path: PathBuf,
     repo_path: PathBuf,
+    /// `(git_dir, common_dir)` when git resolved them; `None` falls back to
+    /// always doing full refreshes.
+    git_dirs: Option<(PathBuf, PathBuf)>,
 }
 
 /// Facade for all git operations. Mirrors lazygit's GitCommand.
@@ -86,6 +90,8 @@ pub struct GitCommands {
     /// that can change remote state (fetch/pull/push/remote edits) instead of
     /// being re-queried on every periodic refresh.
     remote_tags_cache: std::sync::Mutex<Option<std::collections::HashSet<String>>>,
+    /// Per-worktree git dir and shared common dir, for [`Self::refs_fingerprint`].
+    git_dirs: Option<(PathBuf, PathBuf)>,
 }
 
 impl GitCommands {
@@ -101,6 +107,7 @@ impl GitCommands {
             repo_path: paths.worktree_path,
             repo_name,
             remote_tags_cache: std::sync::Mutex::new(None),
+            git_dirs: paths.git_dirs,
         })
     }
 
@@ -123,6 +130,7 @@ impl GitCommands {
             return Ok(RepoPaths {
                 worktree_path: fallback.clone(),
                 repo_path: fallback,
+                git_dirs: None,
             });
         }
 
@@ -131,6 +139,7 @@ impl GitCommands {
             return Ok(RepoPaths {
                 worktree_path: fallback.clone(),
                 repo_path: fallback,
+                git_dirs: None,
             });
         }
 
@@ -147,6 +156,7 @@ impl GitCommands {
         };
 
         Ok(RepoPaths {
+            git_dirs: Some((PathBuf::from(lines[1]), repo_git_dir_path.clone())),
             worktree_path,
             repo_path,
         })

@@ -200,6 +200,7 @@ mod tests {
             repo_path: PathBuf::from("/home/user/dev/project/fix-worktree"),
             repo_name: "project".to_string(),
             remote_tags_cache: Default::default(),
+            git_dirs: None,
         };
 
         let sibling = dummy.resolve_worktree_sibling_path("feat/login-page");

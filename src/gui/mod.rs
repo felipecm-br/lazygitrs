@@ -705,6 +705,12 @@ pub struct Gui {
     remote_op_tx: mpsc::Sender<Result<Option<HeadState>>>,
     /// Async light files refresh (status-only) so Space-spam doesn't freeze.
     files_refresh_rx: Option<mpsc::Receiver<Result<Vec<crate::model::File>>>>,
+    /// Interval refresh of the Files scope only: files with diff stats, plus
+    /// the repo-wide `(added, deleted)` totals.
+    interval_files_rx: Option<mpsc::Receiver<Result<(Vec<crate::model::File>, (usize, usize))>>>,
+    /// Git metadata fingerprint taken when the last full reload started. The
+    /// interval refresh only pays for a full reload when it changes.
+    refs_fingerprint: Option<u64>,
     files_refresh_in_progress: bool,
     /// Background `git ls-files` for the path-filter picker (ctrl-s → path).
     filter_paths_rx: Option<mpsc::Receiver<Result<Vec<String>>>>,
@@ -1084,6 +1090,7 @@ impl Gui {
         // background and streams in as it becomes ready, so the UI can
         // paint immediately and waterfall-display results.
         let git = Arc::new(git);
+        let refs_fingerprint = git.refs_fingerprint();
         let diff_generation = Arc::new(AtomicU64::new(0));
         let commit_details_generation = Arc::new(AtomicU64::new(0));
         spawn_diff_scheduler(
@@ -1220,6 +1227,8 @@ impl Gui {
             remote_op_rx,
             remote_op_tx,
             files_refresh_rx: None,
+            interval_files_rx: None,
+            refs_fingerprint,
             files_refresh_in_progress: false,
             filter_paths_rx: None,
             auto_fetch_rx,
@@ -1941,6 +1950,7 @@ impl Gui {
 
             // Apply completed light files refresh without blocking input.
             self.receive_files_refresh();
+            self.receive_interval_files_refresh();
 
             if self.should_quit {
                 break;
@@ -1959,14 +1969,81 @@ impl Gui {
     /// `needs_refresh` directly and re-queue as before.
     fn arm_interval_refresh(&mut self) {
         let refresh_interval = self.config.user_config.refresher.refresh_interval;
-        if self.config.user_config.git.auto_refresh
+        if !(self.config.user_config.git.auto_refresh
             && refresh_interval > 0
             && !self.refresh_in_progress
             && self.initial_load_rx.is_none()
-            && self.last_refresh_at.elapsed().as_secs() >= refresh_interval
+            && self.interval_files_rx.is_none()
+            && self.last_refresh_at.elapsed().as_secs() >= refresh_interval)
         {
+            return;
+        }
+        // Refs/HEAD/stash/rebase state unchanged: only the working tree can
+        // have moved, so reload the Files scope (4 git calls, not ~26).
+        let fingerprint = self.git.refs_fingerprint();
+        if fingerprint.is_some() && fingerprint == self.refs_fingerprint {
+            self.start_interval_files_refresh();
+        } else {
             self.needs_refresh = true;
         }
+    }
+
+    /// Files scope of the interval refresh: status with per-file diff stats and
+    /// the repo-wide totals, on a background thread.
+    fn start_interval_files_refresh(&mut self) {
+        let (tx, rx) = mpsc::channel();
+        self.interval_files_rx = Some(rx);
+        // Restart the interval now so the tick doesn't re-fire while in flight.
+        self.last_refresh_at = Instant::now();
+        let git = Arc::clone(&self.git);
+        std::thread::spawn(move || {
+            let result = git
+                .load_files()
+                .and_then(|files| Ok((files, git.diff_shortstat()?)));
+            let _ = tx.send(result);
+        });
+    }
+
+    fn receive_interval_files_refresh(&mut self) {
+        let Some(rx) = self.interval_files_rx.as_ref() else {
+            return;
+        };
+        let (files, (added, deleted)) = match rx.try_recv() {
+            Err(mpsc::TryRecvError::Empty) => return,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.interval_files_rx = None;
+                return;
+            }
+            Ok(Err(_)) => {
+                // Background tick: stay quiet, like the full refresh does for
+                // transient failures; the next tick retries.
+                self.interval_files_rx = None;
+                return;
+            }
+            Ok(Ok(v)) => v,
+        };
+        self.interval_files_rx = None;
+        // A stage/unstage refresh is in flight with fresher, optimistic state;
+        // don't clobber it with a status taken before that git op.
+        if self.files_refresh_in_progress || self.needs_files_refresh {
+            return;
+        }
+        {
+            let mut model = self.model.lock().unwrap();
+            model.set_files(files);
+            model.total_additions = added;
+            model.total_deletions = deleted;
+            if self.show_file_tree {
+                self.file_tree_nodes = build_file_tree(&model.files, &self.collapsed_dirs);
+                self.context_mgr.files_list_len_override = Some(self.file_tree_nodes.len());
+            } else {
+                self.file_tree_nodes.clear();
+                self.context_mgr.files_list_len_override = None;
+            }
+        }
+        // Same as the full refresh: working-tree diffs may have changed.
+        self.diff_preview_cache.retain_immutable();
+        self.needs_diff_refresh = true;
     }
 
     fn input_wait_timeout(&self) -> Duration {
@@ -1990,6 +2067,7 @@ impl Gui {
             || self.initial_load_rx.is_some()
             || self.refresh_in_progress
             || self.files_refresh_in_progress
+            || self.interval_files_rx.is_some()
         {
             return BUSY;
         }
@@ -10924,6 +11002,9 @@ impl Gui {
         self.initial_load_received = 0;
         self.refresh_in_progress = true;
         self.needs_refresh = false;
+        // Taken before loading: a change that lands mid-load leaves the next
+        // tick with a mismatch, so it reloads again rather than missing it.
+        self.refs_fingerprint = self.git.refs_fingerprint();
         self.reset_commit_pagination();
         self.diff_preview_cache.retain_immutable();
         let git = Arc::clone(&self.git);
@@ -12271,9 +12352,24 @@ mod terminal_mouse_tests {
         gui.arm_interval_refresh();
         assert!(!gui.needs_refresh);
 
-        // Idle again: the elapsed interval arms exactly as before.
+        // Idle, git metadata unchanged: only the Files scope reloads.
         gui.refresh_in_progress = false;
         gui.initial_load_rx = None;
+        gui.refs_fingerprint = gui.git.refs_fingerprint();
+        gui.arm_interval_refresh();
+        assert!(!gui.needs_refresh);
+        assert!(
+            gui.interval_files_rx.is_some(),
+            "files-scope refresh started"
+        );
+        // ...and it restarted the interval, so the tick doesn't re-fire.
+        gui.interval_files_rx = None;
+        gui.arm_interval_refresh();
+        assert!(gui.interval_files_rx.is_none());
+
+        // Git metadata changed (commit, checkout, fetch…): full reload.
+        gui.last_refresh_at = Instant::now() - Duration::from_secs(5);
+        gui.refs_fingerprint = Some(0);
         gui.arm_interval_refresh();
         assert!(gui.needs_refresh);
     }
