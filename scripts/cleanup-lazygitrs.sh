@@ -19,6 +19,9 @@ done
 
 # 3. Clean up active ports
 echo "Cleaning up active port files..."
+GIT_DIR=$(git rev-parse --git-dir 2>/dev/null)
+[ -n "$GIT_DIR" ] && rm -f "$GIT_DIR/lazygitrs.port"
+# Legacy worktree-root location (versions before 2026-11)
 rm -f .lazygitrs.port
 if [ -d "../.git" ] || [ -f "../.git" ]; then
     rm -f ../.lazygitrs.port
@@ -34,7 +37,7 @@ echo "Cleaning up global active session file..."
 rm -f "$HOME/.lazygitrs_active_session.json"
 
 # 6. Optional: Reset local lines.json notes
-for candidate in ".git/info/lines.json" ".lines.json"; do
+for candidate in "${GIT_DIR:-.git}/info/lines.json" ".lines.json"; do
     if [ -f "$candidate" ]; then
         echo "Resetting $candidate notes list..."
         # Reset notes array to empty while preserving session info if possible

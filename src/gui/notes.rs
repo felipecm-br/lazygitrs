@@ -438,7 +438,7 @@ impl Gui {
     /// 3. **Spawn** — fall back to `notifyCommand` subprocess.
     ///
     /// After sending, the note's `status` is updated from `New` → `Sent`
-    /// in `.lines.json` so the TUI can show a visual indicator.
+    /// in `lines.json` so the TUI can show a visual indicator.
     pub(super) fn notify_ai_for_note(&mut self, note_id: String) {
         let ai_config = self.config.user_config.ai_notes.clone();
         if !ai_config.enabled {
@@ -467,7 +467,7 @@ impl Gui {
             }
         }
 
-        // If not found in current diff view lines, look up in .lines.json
+        // If not found in current diff view lines, look up in lines.json
         if note_info.is_none() {
             let lines_file = crate::pager::notes_store::load(self.git.repo_path());
             if let Some(entry) = lines_file.notes.iter().find(|n| n.id == note_id) {
@@ -487,7 +487,7 @@ impl Gui {
         let prompt = format!(
             "A review note was created in lazygitrs on file '{}' at line {}:\n\n\"{}\"\n\n\
              Load the lazygitrs-review skill if available. \
-             Fetch all notes with: PORT=$(cat .lazygitrs.port) && curl -s http://127.0.0.1:$PORT/session-api/notes\n\
+             Fetch all notes with: PORT=$(cat \"$(git rev-parse --git-dir)/lazygitrs.port\") && curl -s http://127.0.0.1:$PORT/session-api/notes\n\
              Review the note above and respond by POSTing your annotations to \
              http://127.0.0.1:$PORT/session-api using the AgentContext JSON format:\n\
              {{\"version\":1,\"files\":[{{\"path\":\"...\",\"annotations\":[{{\"summary\":\"...\",\"rationale\":\"...\",\"newRange\":[L,L]}}]}}]}}",
@@ -641,7 +641,7 @@ impl Gui {
         });
     }
 
-    /// Mark all new review notes as `Sent` in `.lines.json`, format a consolidated review prompt,
+    /// Mark all new review notes as `Sent` in `lines.json`, format a consolidated review prompt,
     /// and dispatch to the active AI session.
     pub(super) fn notify_ai_for_all_notes(&mut self) {
         let ai_config = self.config.user_config.ai_notes.clone();
@@ -762,7 +762,7 @@ impl Gui {
         matches!(submit_resp, Ok(s) if s.success())
     }
 
-    /// Mark a note as `Sent` in `.lines.json` and reload the diff view.
+    /// Mark a note as `Sent` in `lines.json` and reload the diff view.
     pub(super) fn mark_note_sent(&mut self, note_id: &str) {
         let mut lines_file = crate::pager::notes_store::load(self.git.repo_path());
         if let Some(entry) = lines_file.notes.iter_mut().find(|c| c.id == note_id) {
@@ -772,7 +772,7 @@ impl Gui {
         self.diff_view.load_notes(self.git.repo_path());
     }
 
-    /// Reset a note's status back to `New` in `.lines.json` and reload the diff view.
+    /// Reset a note's status back to `New` in `lines.json` and reload the diff view.
     pub(super) fn reset_note_status(&mut self, note_id: &str) {
         let mut lines_file = crate::pager::notes_store::load(self.git.repo_path());
         if let Some(entry) = lines_file.notes.iter_mut().find(|c| c.id == note_id) {

@@ -23,7 +23,7 @@ The architecture relies on three core components:
 ### 1. The Antigravity Hook (`lazygit-hook.mjs`)
 When `agy` starts, it triggers a lifecycle hook. This Node.js script:
 - Discovers the active `tmux` pane ID and saves it to `/tmp/agy-active-pane-<workspace>.txt`.
-- Discovers the dynamic port of the main `lazygitrs` instance by reading `.lazygitrs.port`.
+- Discovers the dynamic port of the main `lazygitrs` instance by reading `$(git rev-parse --git-dir)/lazygitrs.port`.
 - Sends an HTTP `POST` to `/session-api` registering the `sessionId` and a custom `notifyCommand`.
 - **Crucially**, it does *not* spawn any background SSE listeners. 
 

@@ -12,7 +12,7 @@ This document serves as the definitive reference for keyboard navigation, diff r
    - Inside Diff or Submenus: Pressing `Esc` unwinds focus back to the Primary Anchor (Files panel `[2]`) without dismissing the interface.
    - At the Root List: Pressing `Esc` in `--popup` / `outerFrame` mode immediately dismisses the popup; in full-screen mode it requires a double-tap within 400 ms so unwinding from sub-views never closes the session by accident.
 4. **Dynamic Status Bar Synchronicity:** Control hints in the bottom bar dynamically query the runtime configuration (e.g., `commits.open_log_menu`), guaranteeing that custom remappings always reflect live reality without stale text.
-5. **Worktree Port Isolation:** Each Git worktree maintains its own dynamic HTTP port stored in `.lazygitrs.port`, enabling multiple concurrent agent sessions without port collisions or crosstalk.
+5. **Worktree Port Isolation:** Each Git worktree maintains its own dynamic HTTP port stored in `lazygitrs.port` inside its git dir, enabling multiple concurrent agent sessions without port collisions or crosstalk.
 
 ---
 
@@ -65,9 +65,9 @@ lazygitrs integrates a native, bidirectional AI code-review system:
 - **`y`**: **Yank / Copy Note**. Copies full note text to system clipboard (Wayland `wl-copy`, X11 `xclip`/`xsel`, macOS `pbcopy`, Windows `clip`, or terminal OSC 52) with a 500ms Neovim-style flash highlight.
 - **`S`** (Shift+S): **Send to AI**. Dispatches review note to the active AI session via SSE, local HTTP TUI push (e.g. OpenCode), or background `notifyCommand` fallback. Note status updates from `new` to `sent`.
 - **`r` / `R`**: **Reset Status**. Reverts note status back to `new` for re-review.
-- **`d`**: **Delete Note**. Deletes note from `.lines.json`, automatically focusing the closest adjacent note.
+- **`d`**: **Delete Note**. Deletes note from the notes file (`.git/info/lines.json`), automatically focusing the closest adjacent note.
 - **`Enter` / `o`**: **View Note Full Details**. Opens popup with full markdown commentary, rationale, author, and timestamp.
-- **Worktree Isolation (`.lazygitrs.port`)**: Each worktree writes its dynamic HTTP port to `.lazygitrs.port` in the worktree root, guaranteeing that parallel agent sessions operate in strict isolation.
+- **Worktree Isolation (`lazygitrs.port`)**: Each worktree writes its dynamic HTTP port to `$(git rev-parse --git-dir)/lazygitrs.port`, guaranteeing that parallel agent sessions operate in strict isolation.
 
 ---
 
@@ -109,7 +109,7 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)**:
 | **`c`** | Diff View | Create Inline Review Note | Left Middle reach down to `c` | $110\text{ ms}$ | Direct note composition on hovered diff line. |
 | **`n` / `N`** | Diff View | Cycle Next / Prev Review Note | Right Index reach to `n` / Shift + `N` | $110\text{ ms}$ / $140\text{ ms}$ | Familiar Vim search-next navigation pattern for review notes. |
 | **`y`** (on note) | Diff View | Yank / Copy Note to Clipboard | Right Index reach up to `y` | $110\text{ ms}$ | 500ms Neovim-style visual flash feedback; copies note text. |
-| **`S`** (Shift+S) | Diff View | Send Note to Active AI Session | Left Pinky (Shift) + Left Ring (S) | $140\text{ ms}$ | `S` = Send. Broadcasts prompt to AI via `.lazygitrs.port`. |
+| **`S`** (Shift+S) | Diff View | Send Note to Active AI Session | Left Pinky (Shift) + Left Ring (S) | $140\text{ ms}$ | `S` = Send. Broadcasts prompt to AI via the worktree's `lazygitrs.port`. |
 | **`r` / `R`** (on note)| Diff View | Reset Note Status to `New` | Left Index reach up to `r` | $110\text{ ms}$ | Re-evaluates note without having to re-type commentary. |
 | **`d`** (on note) | Diff View | Delete Review Note | Left Middle tap on Home Row `d` | $100\text{ ms}$ | Destructive single-note dismissal with auto-selection of next note. |
 | **`Enter` / `o`** | Diff View | View Note Full Details Popup | Right Pinky tap / Right Ring reach | $100\text{ ms}$ / $110\text{ ms}$ | Full markdown rendering of rationale, author, and timestamp. |

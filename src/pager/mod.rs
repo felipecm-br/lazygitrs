@@ -58,7 +58,7 @@ pub enum NoteStatus {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommentNote {
-    /// Unique id matching the `.lines.json` entry.
+    /// Unique id matching the `lines.json` entry.
     pub id: String,
     /// Note text (may contain multiple lines).
     pub text: String,

@@ -140,7 +140,30 @@ pub struct NavigateContext {
     pub combined_view: Option<bool>,
 }
 
-/// Probe the instance referenced by this workspace's `.lazygitrs.port`.
+/// Where this worktree's HTTP port is published: `<git-dir>/lazygitrs.port`
+/// (per worktree, inside git metadata, so it never shows up in `git status`).
+/// Falls back to the legacy worktree-root file when there is no git dir.
+/// Clients: `cat "$(git rev-parse --git-dir)/lazygitrs.port"`.
+pub fn port_file_path(repo_path: &std::path::Path) -> std::path::PathBuf {
+    crate::pager::notes_store::resolve_git_dir(repo_path)
+        .map(|dir| dir.join("lazygitrs.port"))
+        .unwrap_or_else(|| legacy_port_file_path(repo_path))
+}
+
+/// Pre-2026-11 location in the worktree root. Still read (an older running
+/// instance may have written it) and removed when the new file is written.
+pub fn legacy_port_file_path(repo_path: &std::path::Path) -> std::path::PathBuf {
+    repo_path.join(".lazygitrs.port")
+}
+
+/// Port published for this worktree, preferring the current location.
+pub fn read_published_port(repo_path: &std::path::Path) -> Option<u16> {
+    [port_file_path(repo_path), legacy_port_file_path(repo_path)]
+        .iter()
+        .find_map(|p| std::fs::read_to_string(p).ok()?.trim().parse().ok())
+}
+
+/// Probe the instance referenced by this workspace's published port file.
 /// If it is alive AND its `GET /session-api/session` reports the *same*
 /// canonical `workspacePath`, return that port — meaning another lazygitrs
 /// instance is already serving this exact workspace and we should defer to it
@@ -156,12 +179,7 @@ fn existing_instance_owns_workspace(repo_path: &std::path::Path) -> Option<u16> 
     use std::io::{Read, Write};
     use std::net::TcpStream;
 
-    let port_file = repo_path.join(".lazygitrs.port");
-    let port: u16 = std::fs::read_to_string(&port_file)
-        .ok()?
-        .trim()
-        .parse()
-        .ok()?;
+    let port = read_published_port(repo_path)?;
     if port == 0 {
         return None;
     }
@@ -265,11 +283,10 @@ pub fn spawn_server(
                 }
             }
             if let Some(listener) = bound {
-                let port_file = state.repo_path.join(".lazygitrs.port");
+                let port_file = port_file_path(&state.repo_path);
                 let mut should_write = true;
 
-                if let Ok(existing_port) = std::fs::read_to_string(&port_file)
-                    && let Ok(port_num) = existing_port.trim().parse::<u16>()
+                if let Some(port_num) = read_published_port(&state.repo_path)
                     && std::net::TcpStream::connect_timeout(
                         &std::net::SocketAddr::new(
                             std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)),
@@ -284,6 +301,15 @@ pub fn spawn_server(
 
                 if should_write {
                     let _ = std::fs::write(&port_file, bound_port.to_string());
+                    // Migrate: drop a stale worktree-root file from older
+                    // versions (only if it is ours, i.e. just a port number).
+                    let legacy = legacy_port_file_path(&state.repo_path);
+                    if legacy != port_file
+                        && std::fs::read_to_string(&legacy)
+                            .is_ok_and(|c| c.trim().parse::<u16>().is_ok())
+                    {
+                        let _ = std::fs::remove_file(&legacy);
+                    }
                 }
 
                 let _ = axum::serve(listener, app).await;
@@ -368,7 +394,7 @@ async fn handle_get_server(State(state): State<AppState>) -> Json<serde_json::Va
     Json(serde_json::json!({"serverUrl": url}))
 }
 
-/// `GET /session-api/notes` — returns the full `.lines.json` content so AI
+/// `GET /session-api/notes` — returns the full `lines.json` content so AI
 /// agents can fetch all review notes.
 async fn handle_get_notes(State(state): State<AppState>) -> Json<serde_json::Value> {
     let lines_file = crate::pager::notes_store::load(&state.repo_path);
@@ -512,7 +538,7 @@ async fn handle_acp_post(
                             Some(notify_command_str.clone())
                         };
                     }
-                    // Persist to .lines.json as fallback for restarts.
+                    // Persist to lines.json as fallback for restarts.
                     let cli = payload
                         .get("cli")
                         .and_then(|v| v.as_str())
@@ -554,7 +580,7 @@ async fn handle_acp_post(
                 if let Ok(mut guard) = state.server_url.lock() {
                     *guard = None;
                 }
-                // Clear from .lines.json too.
+                // Clear from lines.json too.
                 let mut lines_file = crate::pager::notes_store::load(&state.repo_path);
                 lines_file.session = None;
                 crate::pager::notes_store::save(&state.repo_path, lines_file);
@@ -678,5 +704,58 @@ mod guard_tests {
             "application/x-www-form-urlencoded"
         )));
         assert!(!is_json_content_type(None));
+    }
+
+    mod port_file {
+        use super::super::{legacy_port_file_path, port_file_path, read_published_port};
+        use std::path::PathBuf;
+
+        struct Tmp(PathBuf);
+        impl Drop for Tmp {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_dir_all(&self.0);
+            }
+        }
+        fn tmp(name: &str) -> Tmp {
+            let p = std::env::temp_dir().join(format!(
+                "lazygitrs-port-{name}-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+            std::fs::create_dir_all(&p).unwrap();
+            Tmp(p)
+        }
+
+        #[test]
+        fn lives_in_the_git_dir_not_the_worktree() {
+            let t = tmp("plain");
+            std::fs::create_dir_all(t.0.join(".git")).unwrap();
+            assert_eq!(port_file_path(&t.0), t.0.join(".git/lazygitrs.port"));
+        }
+
+        #[test]
+        fn linked_worktree_uses_its_own_git_dir() {
+            let t = tmp("worktree");
+            let gitdir = t.0.join("bare/worktrees/wt");
+            std::fs::create_dir_all(&gitdir).unwrap();
+            let wt = t.0.join("wt");
+            std::fs::create_dir_all(&wt).unwrap();
+            std::fs::write(wt.join(".git"), format!("gitdir: {}\n", gitdir.display())).unwrap();
+            assert_eq!(port_file_path(&wt), gitdir.join("lazygitrs.port"));
+        }
+
+        #[test]
+        fn falls_back_to_legacy_root_file_and_prefers_new_one() {
+            let t = tmp("legacy");
+            std::fs::create_dir_all(t.0.join(".git")).unwrap();
+            assert_eq!(read_published_port(&t.0), None);
+            std::fs::write(legacy_port_file_path(&t.0), "47660\n").unwrap();
+            assert_eq!(read_published_port(&t.0), Some(47660));
+            std::fs::write(port_file_path(&t.0), "47661").unwrap();
+            assert_eq!(read_published_port(&t.0), Some(47661));
+        }
     }
 }

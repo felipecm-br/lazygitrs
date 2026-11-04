@@ -161,8 +161,9 @@ fn main() {
         }
 
         // 2. Try to notify running instance for the current directory via API
-        if let Ok(port_str) = std::fs::read_to_string(".lazygitrs.port")
-            && let Ok(port) = port_str.trim().parse::<u16>()
+        if let Some(port) = std::env::current_dir()
+            .ok()
+            .and_then(|cwd| lazygitrs::acp::read_published_port(&cwd))
         {
             let url = format!("http://127.0.0.1:{}/session-api", port);
             let _ = std::process::Command::new("curl")

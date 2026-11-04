@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- The AI-notes HTTP port is now published at `$(git rev-parse --git-dir)/lazygitrs.port` instead of `.lazygitrs.port` in the worktree root, so it no longer shows up as untracked in every repo. Clients should read `PORT=$(cat "$(git rev-parse --git-dir)/lazygitrs.port" 2>/dev/null || echo 47657)`; the bundled skill, AGENTS.md, README and cleanup script are updated. A stale root file is removed on startup, and an older running instance's root file is still honoured
 - `files.generateAICommit` now defaults to `<c-a>`. The old `<c-g>` default never fired because the universal Files/HEAD toggle consumed it first; set it explicitly to keep a custom key
 - The `:` / custom command runner no longer sources `~/.dotfiles/main/git/.zsh/packages/git.zsh` for everyone; set `os.shellFunctionsFile` to load an aliases/functions file (same key as lazygit)
 

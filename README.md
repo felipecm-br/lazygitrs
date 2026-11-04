@@ -88,11 +88,11 @@ lazygitrs upgrade 0.0.32   # specific version
   - [x] `git rebase` (global `I`) and then asks rebase on top of what branch/commit.
   - [x] 🎨 Themes + Theme-Picker!
 - [x] **Grep diff contents** — `Ctrl-F` in Files / Commit Files / Compare searches hunk lines in-context, `Enter` jumps to the file in the current list.
-- [x] **Universal AI Notes Architecture & Workflow** — leave review comments on code diffs and instantly notify your AI CLI of choice to review or act on it. `lazygitrs` uses a dynamically registered `.lines.json` session architecture, supporting three transport layers to integrate with *any* AI tool on the market:
+- [x] **Universal AI Notes Architecture & Workflow** — leave review comments on code diffs and instantly notify your AI CLI of choice to review or act on it. `lazygitrs` uses a dynamically registered `lines.json` (stored in `.git/info/`, never in your working tree) session architecture, supporting three transport layers to integrate with *any* AI tool on the market:
   - **Subprocess Spawning** (`notifyCommand`): Spawns a background command (great for `agy`, `claude`, etc.)
   - **HTTP Push** (`serverUrl`): Does an instant HTTP POST to local servers (great for `opencode`)
   - **Server-Sent Events** (`SSE`): Real-time event streaming for wrapper scripts or IDE extensions.
-  - **Worktree Port Isolation**: Each Git worktree runs on an isolated dynamic port saved to `.lazygitrs.port`, preventing collisions during parallel agent execution.
+  - **Worktree Port Isolation**: Each Git worktree runs on an isolated dynamic port saved to `lazygitrs.port` in its git dir (`$(git rev-parse --git-dir)/lazygitrs.port`), preventing collisions during parallel agent execution.
   - **Bidirectional Sync**: AI review annotations are posted back directly into the lazygitrs TUI diff view.
   - **Note Interactions & Workflow**: Press `c` to create a note, `n`/`N` to cycle notes, `y` to yank note text with a Neovim-style 500ms flash highlight, `S` to send note to AI session, `r`/`R` to reset note status, `d` to delete note, and `<Enter>` or `o` to view full note details.
 
@@ -134,7 +134,7 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)** ($H=0$, H
 | **`c`** | Diff View | Create Inline Review Note | Left Middle reach down to `c` | $110\text{ ms}$ | Direct note composition on hovered diff line. |
 | **`n` / `N`** | Diff View | Cycle Next / Prev Review Note | Right Index reach to `n` / Shift + `N` | $110\text{ ms}$ / $140\text{ ms}$ | Familiar Vim search-next navigation pattern for review notes. |
 | **`y`** (on note) | Diff View | Yank / Copy Note to Clipboard | Right Index reach up to `y` | $110\text{ ms}$ | 500ms Neovim-style visual flash feedback; copies note text. |
-| **`S`** (Shift+S) | Diff View | Send Note to Active AI Session | Left Pinky (Shift) + Left Ring (S) | $140\text{ ms}$ | `S` = Send. Broadcasts prompt to AI via `.lazygitrs.port`. |
+| **`S`** (Shift+S) | Diff View | Send Note to Active AI Session | Left Pinky (Shift) + Left Ring (S) | $140\text{ ms}$ | `S` = Send. Broadcasts prompt to AI via the worktree's `lazygitrs.port`. |
 | **`r` / `R`** (on note)| Diff View | Reset Note Status to `New` | Left Index reach up to `r` | $110\text{ ms}$ | Re-evaluates note without having to re-type commentary. |
 | **`d`** (on note) | Diff View | Delete Review Note | Left Middle tap on Home Row `d` | $100\text{ ms}$ | Destructive single-note dismissal with auto-selection of next note. |
 | **`Enter` / `o`** | Diff View | View Note Full Details Popup | Right Pinky tap / Right Ring reach | $100\text{ ms}$ / $110\text{ ms}$ | Full markdown rendering of rationale, author, and timestamp. |
@@ -221,7 +221,7 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
 If you need to clear or unregister an active AI session for the current repository, you can run the following command:
 
 ```sh
-PORT=$(cat .lazygitrs.port 2>/dev/null || echo 47657)
+PORT=$(cat "$(git rev-parse --git-dir)/lazygitrs.port" 2>/dev/null || echo 47657)
 curl -s -X POST http://127.0.0.1:$PORT/session-api \
   -H 'content-type: application/json' \
   --data '{"action":"unregister"}'

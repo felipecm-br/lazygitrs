@@ -55,7 +55,7 @@ This document summarizes the changes, additions, fixes, and architectural improv
   * Created an SSE (Server-Sent Events) push and pull transport layer inside `src/acp.rs` with binding retry loops.
   * Added support for `{{workspace_path}}` in `notifyCommand` execution.
   * Implemented `acp/navigate` API route supporting note scrolling, selection, and navigation.
-  * Isolated dynamic HTTP ports per worktree in `.lazygitrs.port` to ensure conflict-free parallel execution.
+  * Isolated dynamic HTTP ports per worktree in `lazygitrs.port` (inside the worktree's git dir) to ensure conflict-free parallel execution.
 
 * **CLI Options & Agent Integration**:
   * Added `--config` and `--print-default-config` CLI flags.

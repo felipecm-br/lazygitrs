@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::pager::{CommentNote, NoteSource, NoteStatus, now_iso8601};
 
-/// The on-disk `.lines.json` structure (new wrapped format).
+/// The on-disk `lines.json` structure (new wrapped format).
 ///
 /// ```json
 /// {
@@ -69,7 +69,7 @@ impl Default for LinesFile {
     }
 }
 
-/// A single entry in `.lines.json`.
+/// A single entry in `lines.json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LinesEntry {
     pub id: String,

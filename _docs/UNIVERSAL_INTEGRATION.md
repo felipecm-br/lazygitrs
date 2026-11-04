@@ -13,7 +13,7 @@ Here is exactly how we made it work for `agy` (Antigravity), and how you can rep
 
 ### 1. Dynamic Session Registration
 Instead of hardcoding session IDs, `agy` utilizes **Lifecycle Hooks** (`SessionStart` and `PreInvocation`).
-Whenever you send a message to `agy`, a hook script silently executes in the background. This script sends an HTTP POST to `lazygitrs` (`http://127.0.0.1:$PORT/session-api`, where `$PORT` is read from `.lazygitrs.port`) to register its current `sessionId`.
+Whenever you send a message to `agy`, a hook script silently executes in the background. This script sends an HTTP POST to `lazygitrs` (`http://127.0.0.1:$PORT/session-api`, where `$PORT` is read from `$(git rev-parse --git-dir)/lazygitrs.port`) to register its current `sessionId`.
 
 ### 2. Terminal Pane Discovery
 Inside that exact same hook script, we need to figure out *where* `agy` is physically running on the user's screen.
@@ -25,7 +25,7 @@ This script does one simple thing: it holds an open `curl` connection to the `la
 
 ```bash
 while true; do
-  PORT=$(cat .lazygitrs.port 2>/dev/null || echo 47657)
+  PORT=$(cat "$(git rev-parse --git-dir)/lazygitrs.port" 2>/dev/null || echo 47657)
   curl -N -s http://127.0.0.1:$PORT/session-api/events | while read -r line; do
     if [[ "$line" == data:* ]]; then
         # Parse the prompt payload...
@@ -69,7 +69,7 @@ You don't need to inject keystrokes at all! You simply modify the SSE bridge scr
 
 ```bash
 # Example SSE bridge translating events to an Opencode local API
-PORT=$(cat .lazygitrs.port 2>/dev/null || echo 47657)
+PORT=$(cat "$(git rev-parse --git-dir)/lazygitrs.port" 2>/dev/null || echo 47657)
 curl -N -s http://127.0.0.1:$PORT/session-api/events | while read -r line; do
   prompt=$(echo "$line" | jq -r '.prompt')
   curl -X POST http://127.0.0.1:8080/opencode/inject -d "{\"message\": \"$prompt\"}"

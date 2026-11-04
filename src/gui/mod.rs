@@ -1041,7 +1041,7 @@ impl Gui {
         let (auto_fetch_tx, auto_fetch_rx) = mpsc::channel();
         let (menu_async_tx, menu_async_rx) = mpsc::channel();
         let (acp_tx, acp_rx) = mpsc::channel();
-        // Restore session ID and server URL from .lines.json if available
+        // Restore session ID and server URL from lines.json if available
         // (survives restarts).
         let persisted = crate::pager::notes_store::load(git.repo_path()).session;
         let persisted_session = persisted.as_ref().map(|s| s.session_id.clone());
