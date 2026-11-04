@@ -143,13 +143,23 @@ impl InlineImagePreview {
 
     pub(super) fn start_load(&mut self) {
         use std::sync::atomic::Ordering;
-        if INLINE_LOADS
-            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |n| {
-                (n < MAX_INLINE_LOADS).then_some(n + 1)
-            })
-            .is_err()
-        {
-            return;
+        // Take a load slot if one is free. A plain CAS loop: `fetch_update`
+        // is deprecated on newer toolchains and `try_update` is newer than
+        // the crate's MSRV.
+        let mut current = INLINE_LOADS.load(Ordering::Acquire);
+        loop {
+            if current >= MAX_INLINE_LOADS {
+                return;
+            }
+            match INLINE_LOADS.compare_exchange_weak(
+                current,
+                current + 1,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(actual) => current = actual,
+            }
         }
         struct LoadPermit;
         impl Drop for LoadPermit {
