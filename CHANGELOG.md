@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 - Add `omarchy` dynamic theme (`gui.theme: omarchy` or via the theme picker): reads `~/.local/state/omarchy/current/theme/colors.toml` (or `OMARCHY_COLORS_PATH`)
 - Status bar overhaul: uniform accent key styling, dimmed `│` separators, unambiguous key labels (`[ ]`, `{ }`, `J K`, `j k`, `tab 1-5`), dynamic `commitChanges` / `quickAiNote` labels, and a 7-pair cap per context
 - Add non-Alt `<c-w>` window-resize chords (`<c-w> h` shrink, `<c-w> l` expand, `<c-w> k` side full, `<c-w> j` main full, `<c-w> =` reset) alongside existing `Alt` shortcuts
+- Warn in the command log at startup when `config.yml` contains unrecognized keys (e.g. typos like `gui.borderGradiant`) without failing to load
+- Make all internal `Mutex` locks poison-tolerant and replace `once_cell` with `std::sync::LazyLock`
 
 ### CI
 

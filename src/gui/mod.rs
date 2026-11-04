@@ -1089,6 +1089,15 @@ impl Gui {
         let show_commit_details = config.app_state.show_commit_details.unwrap_or(true);
         let command_log = crate::os::cmd::new_command_log();
         crate::os::cmd::set_thread_command_log(command_log.clone());
+        if !config.user_config.unknown_keys.is_empty() {
+            command_log
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .push(format!(
+                    "[config] Unknown config key(s) ignored: {}",
+                    config.user_config.unknown_keys.join(", ")
+                ));
+        }
 
         // Start with an empty model — each piece of data loads in the
         // background and streams in as it becomes ready, so the UI can

@@ -19,6 +19,9 @@ pub struct UserConfig {
     pub custom_commands: Vec<CustomCommand>,
     #[serde(rename = "aiNotes")]
     pub ai_notes: AiNotesConfig,
+    /// Unknown keys encountered when parsing `config.yml` (reported once in the command log at startup).
+    #[serde(skip)]
+    pub unknown_keys: Vec<String>,
 }
 
 /// Mirrors lazygit's `refresher` config block. `refreshInterval` is the
@@ -96,15 +99,78 @@ impl UserConfig {
 
         if config_path.exists() {
             let contents = std::fs::read_to_string(&config_path)?;
-            let config: UserConfig = serde_yaml::from_str(&contents)?;
+            let mut config: UserConfig = serde_yaml::from_str(&contents)?;
+            config.unknown_keys = Self::find_unknown_keys(&contents);
             Ok(config)
         } else {
             Ok(Self::default())
         }
     }
 
+    /// Compare a raw YAML config string against the canonical serialized keys of `UserConfig::default()`
+    /// and return any unrecognized dot-separated paths (e.g. `"gui.borderGradiant"`).
+    pub fn find_unknown_keys(yaml_str: &str) -> Vec<String> {
+        let Ok(user_val) = serde_yaml::from_str::<serde_json::Value>(yaml_str) else {
+            return Vec::new();
+        };
+        let Ok(schema_val) = serde_json::to_value(UserConfig::default()) else {
+            return Vec::new();
+        };
+        let mut unknown = Vec::new();
+        collect_unknown_json_keys("", &user_val, &schema_val, &mut unknown);
+        unknown
+    }
+
     pub fn theme(&self) -> Theme {
         Theme::from_config(&self.gui)
+    }
+}
+
+fn collect_unknown_json_keys(
+    prefix: &str,
+    user: &serde_json::Value,
+    schema: &serde_json::Value,
+    out: &mut Vec<String>,
+) {
+    let serde_json::Value::Object(user_map) = user else {
+        return;
+    };
+    let serde_json::Value::Object(schema_map) = schema else {
+        return;
+    };
+    for (k, v) in user_map {
+        let path = if prefix.is_empty() {
+            k.clone()
+        } else {
+            format!("{prefix}.{k}")
+        };
+        // `gui.border` accepts arbitrary panel keys in Granular mode; `gui.theme` accepts `preset` in Map mode.
+        if path == "gui.border" {
+            continue;
+        }
+        if path == "gui.theme" {
+            if let serde_json::Value::Object(theme_map) = v {
+                for tk in theme_map.keys() {
+                    if tk != "preset"
+                        && !schema_map
+                            .get("theme")
+                            .and_then(|t| t.as_object())
+                            .is_some_and(|m| m.contains_key(tk))
+                    {
+                        out.push(format!("gui.theme.{tk}"));
+                    }
+                }
+            }
+            continue;
+        }
+        match schema_map.get(k) {
+            Some(schema_child) => {
+                if schema_child.is_object() && v.is_object() {
+                    collect_unknown_json_keys(&path, v, schema_child, out);
+                }
+            }
+            None => out.push(path),
+        }
     }
 }
 
@@ -874,5 +940,21 @@ gui:
         let map_cfg: UserConfig = serde_yaml::from_str(yaml_map).unwrap();
         assert_eq!(map_cfg.gui.theme.preset, None);
         assert_eq!(map_cfg.gui.theme.active_border_color, vec!["cyan", "bold"]);
+    }
+
+    #[test]
+    fn test_find_unknown_keys_detects_typos_without_failing_load() {
+        let yaml = r#"
+gui:
+  borderGradiant: aurora
+  theme: cockpit
+git:
+  autoFetc: false
+"#;
+        let unknown = UserConfig::find_unknown_keys(yaml);
+        assert_eq!(
+            unknown,
+            vec!["git.autoFetc".to_string(), "gui.borderGradiant".to_string()]
+        );
     }
 }
