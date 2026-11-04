@@ -249,6 +249,42 @@ pub fn resolve_load_path(repo_path: &Path) -> std::path::PathBuf {
     canonical_notes_path(repo_path)
 }
 
+/// Where the AI notify command's stdout/stderr is captured.
+///
+/// Lives in the git dir (per worktree, never committed) rather than the
+/// working tree: the output can echo review prompts that quote source code.
+/// Falls back to the XDG state dir outside a resolvable repo.
+pub fn notify_log_path(repo_path: &Path) -> std::path::PathBuf {
+    if let Some(git_dir) = resolve_git_dir(repo_path) {
+        return git_dir.join("lazygitrs-ai-notify.log");
+    }
+    let xdg = resolve_xdg_state_path(repo_path).with_extension("notify.log");
+    if let Some(parent) = xdg.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    xdg
+}
+
+/// The persisted `notifyCommand`, but only when it can be trusted to run.
+///
+/// The command is executed by a shell, so it must come from a location the
+/// user owns. A legacy repo-root `.lines.json` is part of the working tree:
+/// a cloned repository can ship one, and running its command on `S` would
+/// let any repo execute code on open. Only `.git/…` and XDG state count.
+pub fn trusted_notify_command(repo_path: &Path) -> Option<String> {
+    if is_working_tree_path(repo_path, &resolve_load_path(repo_path)) {
+        return None;
+    }
+    load(repo_path)
+        .session
+        .map(|s| s.notify_command)
+        .filter(|c| !c.is_empty())
+}
+
+fn is_working_tree_path(repo_path: &Path, target: &Path) -> bool {
+    target == repo_path.join(".lines.json")
+}
+
 /// Load `lines.json` from the repository's git metadata directory or legacy root.
 /// Handles both the new wrapped format and the legacy flat-array format.
 pub fn load(repo_path: &Path) -> LinesFile {
@@ -347,6 +383,39 @@ mod tests {
         fn drop(&mut self) {
             let _ = std::fs::remove_dir_all(&self.path);
         }
+    }
+
+    const SESSION_JSON: &str = r#"{"version":1,"revision":1,"session":{"sessionId":"s","notifyCommand":"touch /tmp/pwned"},"notes":[]}"#;
+
+    #[test]
+    fn notify_command_from_working_tree_lines_json_is_not_trusted() {
+        // A cloned repo can ship a root `.lines.json`; its command must not run.
+        let tmp = TempDir::new("notify-untrusted");
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        std::fs::write(tmp.path().join(".lines.json"), SESSION_JSON).unwrap();
+        assert_eq!(trusted_notify_command(tmp.path()), None);
+    }
+
+    #[test]
+    fn notify_command_from_git_dir_is_trusted() {
+        let tmp = TempDir::new("notify-trusted");
+        let info = tmp.path().join(".git").join("info");
+        std::fs::create_dir_all(&info).unwrap();
+        std::fs::write(info.join("lines.json"), SESSION_JSON).unwrap();
+        assert_eq!(
+            trusted_notify_command(tmp.path()).as_deref(),
+            Some("touch /tmp/pwned")
+        );
+    }
+
+    #[test]
+    fn notify_log_lives_in_git_dir() {
+        let tmp = TempDir::new("notify-log");
+        std::fs::create_dir_all(tmp.path().join(".git")).unwrap();
+        assert_eq!(
+            notify_log_path(tmp.path()),
+            tmp.path().join(".git").join("lazygitrs-ai-notify.log")
+        );
     }
 
     #[test]

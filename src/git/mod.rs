@@ -81,6 +81,11 @@ struct RepoPaths {
 pub struct GitCommands {
     repo_path: PathBuf,
     repo_name: String,
+    /// Tag names seen on the remotes (`ls-remote --tags`). This is network I/O,
+    /// so it is cached for the session and invalidated only by operations
+    /// that can change remote state (fetch/pull/push/remote edits) instead of
+    /// being re-queried on every periodic refresh.
+    remote_tags_cache: std::sync::Mutex<Option<std::collections::HashSet<String>>>,
 }
 
 impl GitCommands {
@@ -95,6 +100,7 @@ impl GitCommands {
         Ok(Self {
             repo_path: paths.worktree_path,
             repo_name,
+            remote_tags_cache: std::sync::Mutex::new(None),
         })
     }
 

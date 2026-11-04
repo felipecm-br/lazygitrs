@@ -97,6 +97,7 @@ impl GitCommands {
         self.git()
             .args(&["remote", "add", name, url])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -104,6 +105,7 @@ impl GitCommands {
         self.git()
             .args(&["remote", "remove", name])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -111,6 +113,7 @@ impl GitCommands {
         self.git()
             .args(&["remote", "rename", old_name, new_name])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -118,6 +121,7 @@ impl GitCommands {
         self.git()
             .args(&["remote", "set-url", name, url])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -128,6 +132,7 @@ impl GitCommands {
         self.git()
             .args(&["fetch", "--no-write-fetch-head", remote])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -135,6 +140,7 @@ impl GitCommands {
         self.git()
             .args(&["fetch", "--all", "--no-write-fetch-head"])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -147,11 +153,17 @@ impl GitCommands {
             .args(&["fetch", "--all", "--no-write-fetch-head"])
             .env("GIT_TERMINAL_PROMPT", "0")
             .run_expecting_success()?;
-        Ok(!result.stdout.trim().is_empty() || !result.stderr.trim().is_empty())
+        let changed = !result.stdout.trim().is_empty() || !result.stderr.trim().is_empty();
+        if changed {
+            // New/removed tags show up in fetch output; re-check remote tags.
+            self.invalidate_remote_tags();
+        }
+        Ok(changed)
     }
 
     pub fn pull(&self) -> Result<()> {
         self.git().args(&["pull"]).run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -162,6 +174,7 @@ impl GitCommands {
             cmd = cmd.arg("--force-with-lease");
         }
         cmd.run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 
@@ -204,6 +217,7 @@ impl GitCommands {
         self.git()
             .args(&["push", "-u", remote, branch])
             .run_expecting_success()?;
+        self.invalidate_remote_tags();
         Ok(())
     }
 

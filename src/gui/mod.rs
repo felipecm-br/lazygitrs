@@ -1038,10 +1038,8 @@ impl Gui {
             .as_ref()
             .map(|s| s.server_url.clone())
             .filter(|u| !u.is_empty());
-        let persisted_notify_cmd = persisted
-            .as_ref()
-            .map(|s| s.notify_command.clone())
-            .filter(|c| !c.is_empty());
+        let persisted_notify_cmd =
+            crate::pager::notes_store::trusted_notify_command(git.repo_path());
         let acp_session_id: crate::acp::SessionId = Arc::new(Mutex::new(persisted_session));
         let acp_server_url: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(persisted_server_url));
         let acp_notify_command: Arc<Mutex<Option<String>>> =
@@ -1920,14 +1918,7 @@ impl Gui {
                 break;
             }
 
-            // Background auto-refresh on refresher.refreshInterval (0 = disabled).
-            let refresh_interval = self.config.user_config.refresher.refresh_interval;
-            if self.config.user_config.git.auto_refresh
-                && refresh_interval > 0
-                && self.last_refresh_at.elapsed().as_secs() >= refresh_interval
-            {
-                self.needs_refresh = true;
-            }
+            self.arm_interval_refresh();
 
             // Kick off a non-blocking full refresh (same streaming path as
             // initial load). Avoids freezing the UI for ~1s on commit/reword.
@@ -1950,6 +1941,25 @@ impl Gui {
         }
 
         Ok(())
+    }
+
+    /// Background auto-refresh on `refresher.refreshInterval` (0 = disabled).
+    ///
+    /// `last_refresh_at` is stamped when a refresh *completes*, so while one is
+    /// in flight the interval still reads as elapsed. Re-arming then queued a
+    /// second, identical full reload the moment the first landed — every tick
+    /// ran the whole model load twice. User mutations still set
+    /// `needs_refresh` directly and re-queue as before.
+    fn arm_interval_refresh(&mut self) {
+        let refresh_interval = self.config.user_config.refresher.refresh_interval;
+        if self.config.user_config.git.auto_refresh
+            && refresh_interval > 0
+            && !self.refresh_in_progress
+            && self.initial_load_rx.is_none()
+            && self.last_refresh_at.elapsed().as_secs() >= refresh_interval
+        {
+            self.needs_refresh = true;
+        }
     }
 
     fn input_wait_timeout(&self) -> Duration {
@@ -10161,12 +10171,7 @@ impl Gui {
                 .lock()
                 .map(|g| g.clone())
                 .unwrap_or(None)
-                .or_else(|| {
-                    crate::pager::notes_store::load(&repo_path)
-                        .session
-                        .filter(|s| !s.notify_command.is_empty())
-                        .map(|s| s.notify_command)
-                })
+                .or_else(|| crate::pager::notes_store::trusted_notify_command(&repo_path))
                 .or_else(|| {
                     if let Ok(home) = std::env::var("HOME") {
                         let global_path =
@@ -10230,12 +10235,12 @@ impl Gui {
                 .unwrap_or_default();
             let workspace_path = repo_path.to_string_lossy().to_string();
             let cmd_str = cmd_template
-                .replace("{{session_id}}", &session_id)
+                .replace("{{session_id}}", &shell_escape_arg(&session_id))
                 .replace("{{workspace_path}}", &shell_escape_arg(&workspace_path))
                 .replace("{{prompt}}", &shell_escape_arg(&prompt));
 
             crate::os::cmd::log_command(&cmd_str);
-            let log_path = repo_path.join(".lazygitrs-ai-notify.log");
+            let log_path = crate::pager::notes_store::notify_log_path(&repo_path);
             let _ = match std::fs::File::create(&log_path) {
                 Ok(log_file) => {
                     let stderr_file = log_file.try_clone().unwrap_or_else(|_| {
@@ -12088,6 +12093,29 @@ mod terminal_mouse_tests {
         assert_eq!(gui.input_wait_timeout(), Duration::from_millis(200));
         gui.needs_refresh = true;
         assert_eq!(gui.input_wait_timeout(), Duration::from_millis(16));
+    }
+
+    #[test]
+    fn interval_refresh_does_not_rearm_while_refresh_in_flight() {
+        let repo = TempRepo::new("interval-refresh-in-flight");
+        let mut gui = checkout_test_gui(&repo);
+        let mut config = crate::config::AppConfig::default();
+        config.user_config.git.auto_refresh = true;
+        config.user_config.refresher.refresh_interval = 1;
+        gui.config = Arc::new(config);
+        gui.last_refresh_at = Instant::now() - Duration::from_secs(5);
+
+        // In flight: the elapsed interval must not queue a duplicate reload.
+        gui.needs_refresh = false;
+        gui.refresh_in_progress = true;
+        gui.arm_interval_refresh();
+        assert!(!gui.needs_refresh);
+
+        // Idle again: the elapsed interval arms exactly as before.
+        gui.refresh_in_progress = false;
+        gui.initial_load_rx = None;
+        gui.arm_interval_refresh();
+        assert!(gui.needs_refresh);
     }
 
     #[test]

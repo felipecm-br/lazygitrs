@@ -247,6 +247,7 @@ pub fn spawn_server(
                 .route("/session-api/session", get(handle_get_session))
                 .route("/session-api/server", get(handle_get_server))
                 .route("/session-api/events", get(handle_sse_events))
+                .layer(axum::middleware::from_fn(guard_local_request))
                 .with_state(state.clone());
 
             let mut bound: Option<TcpListener> = None;
@@ -293,6 +294,64 @@ pub fn spawn_server(
     });
 
     sse_tx
+}
+
+/// Reject requests that a web page could forge.
+///
+/// The API is unauthenticated and `register` stores a `notifyCommand` that is
+/// later run by a shell, so it must only be reachable by local clients
+/// (curl, agent hooks), never by a browser tab:
+/// - `Host` must name loopback, which defeats DNS rebinding (the browser sends
+///   the attacker's hostname).
+/// - POST bodies must be `application/json`. A cross-site page can only send
+///   form/`text/plain` bodies without a CORS preflight, and we never answer
+///   preflights, so this closes CSRF.
+async fn guard_local_request(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::{StatusCode, header};
+    use axum::response::IntoResponse;
+
+    let headers = req.headers();
+    let host = headers.get(header::HOST).and_then(|v| v.to_str().ok());
+    if !is_loopback_host(host) {
+        return (StatusCode::FORBIDDEN, "non-loopback Host").into_response();
+    }
+    if req.method() == axum::http::Method::POST {
+        let ct = headers
+            .get(header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok());
+        if !is_json_content_type(ct) {
+            return (
+                StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                "Content-Type must be application/json",
+            )
+                .into_response();
+        }
+    }
+    next.run(req).await
+}
+
+fn is_loopback_host(host: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return false;
+    };
+    let name = if let Some(rest) = host.strip_prefix('[') {
+        // [::1]:port
+        rest.split(']').next().unwrap_or("")
+    } else {
+        host.rsplit_once(':').map_or(host, |(name, _port)| name)
+    };
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "127.0.0.1" | "localhost" | "::1"
+    )
+}
+
+fn is_json_content_type(ct: Option<&str>) -> bool {
+    ct.and_then(|v| v.split(';').next())
+        .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
 }
 
 /// `GET /session-api/session` — returns the currently registered AI session
@@ -577,4 +636,48 @@ async fn handle_acp_post(
     }
 
     Json(serde_json::json!({"error": "unknown action or invalid payload"}))
+}
+
+#[cfg(test)]
+mod guard_tests {
+    use super::{is_json_content_type, is_loopback_host};
+
+    #[test]
+    fn loopback_hosts_are_accepted() {
+        for h in [
+            "127.0.0.1",
+            "127.0.0.1:47657",
+            "localhost:47657",
+            "LOCALHOST",
+            "[::1]:47657",
+        ] {
+            assert!(is_loopback_host(Some(h)), "{h}");
+        }
+    }
+
+    #[test]
+    fn rebinding_and_missing_hosts_are_rejected() {
+        for h in [
+            "evil.example:47657",
+            "127.0.0.1.evil.example",
+            "localhost.evil.example:80",
+            "",
+        ] {
+            assert!(!is_loopback_host(Some(h)), "{h}");
+        }
+        assert!(!is_loopback_host(None));
+    }
+
+    #[test]
+    fn only_json_bodies_pass() {
+        assert!(is_json_content_type(Some("application/json")));
+        assert!(is_json_content_type(Some(
+            "Application/JSON; charset=utf-8"
+        )));
+        assert!(!is_json_content_type(Some("text/plain")));
+        assert!(!is_json_content_type(Some(
+            "application/x-www-form-urlencoded"
+        )));
+        assert!(!is_json_content_type(None));
+    }
 }

@@ -210,6 +210,79 @@ impl CmdBuilder {
         Ok(CmdResult::from_output(output))
     }
 
+    /// Run with a wall-clock budget. Returns `Ok(None)` on timeout.
+    ///
+    /// On timeout the child's whole process group is killed and reaped —
+    /// `make_non_interactive` makes it a session leader, so an `ssh` spawned by
+    /// `git ls-remote`/`fetch` dies with it instead of lingering offline.
+    /// Stdin is always null here (`stdin` data is ignored).
+    pub fn run_with_timeout(&self, timeout: std::time::Duration) -> Result<Option<CmdResult>> {
+        use std::io::Read;
+        use std::time::Instant;
+
+        log_command(&self.description());
+
+        let mut cmd = Command::new(&self.program);
+        cmd.args(&self.args);
+        if let Some(ref cwd) = self.cwd {
+            cmd.current_dir(cwd);
+        }
+        for (key, value) in &self.env_vars {
+            cmd.env(key, value);
+        }
+        make_non_interactive(&mut cmd);
+        cmd.stdin(Stdio::null());
+        cmd.stdout(Stdio::piped());
+        cmd.stderr(Stdio::piped());
+
+        let mut child = cmd
+            .spawn()
+            .with_context(|| format!("Failed to spawn: {} {:?}", self.program, self.args))?;
+
+        // Drain pipes on helper threads so a chatty child can't block on a
+        // full pipe buffer while we poll for exit.
+        fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+            std::thread::spawn(move || {
+                let mut buf = Vec::new();
+                if let Some(mut p) = pipe {
+                    let _ = p.read_to_end(&mut buf);
+                }
+                buf
+            })
+        }
+        let out_h = drain(child.stdout.take());
+        let err_h = drain(child.stderr.take());
+
+        let deadline = Instant::now() + timeout;
+        let status = loop {
+            if let Some(status) = child.try_wait()? {
+                break Some(status);
+            }
+            if Instant::now() >= deadline {
+                break None;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+
+        let Some(status) = status else {
+            #[cfg(unix)]
+            unsafe {
+                // pgid == pid: the child called setsid() in pre_exec.
+                libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+            }
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        };
+
+        let output = Output {
+            status,
+            stdout: out_h.join().unwrap_or_default(),
+            stderr: err_h.join().unwrap_or_default(),
+        };
+        Ok(Some(CmdResult::from_output(output)))
+    }
+
     pub fn run_expecting_success(&self) -> Result<CmdResult> {
         let result = self.run()?;
         if !result.success {
@@ -226,5 +299,35 @@ impl CmdBuilder {
 
     pub fn description(&self) -> String {
         format!("{} {}", self.program, self.args.join(" "))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CmdBuilder;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn run_with_timeout_returns_output_when_fast() {
+        let r = CmdBuilder::new("sh")
+            .args(&["-c", "echo hi"])
+            .run_with_timeout(Duration::from_secs(5))
+            .unwrap()
+            .expect("should finish");
+        assert!(r.success);
+        assert_eq!(r.stdout.trim(), "hi");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_with_timeout_kills_whole_process_group() {
+        // The grandchild `sleep` must die with the shell, not linger.
+        let started = Instant::now();
+        let r = CmdBuilder::new("sh")
+            .args(&["-c", "sleep 30 & wait"])
+            .run_with_timeout(Duration::from_millis(200))
+            .unwrap();
+        assert!(r.is_none());
+        assert!(started.elapsed() < Duration::from_secs(5));
     }
 }
