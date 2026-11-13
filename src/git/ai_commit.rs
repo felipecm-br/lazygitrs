@@ -70,24 +70,78 @@ pub fn generate_commit_message_from_diff_cancellable(
 
     // Run the generate command via shell. Traditional model wrappers receive
     // the staged diff on stdin; agent CLIs can inspect the repo themselves.
-    let mut child = Command::new("sh")
-        .args(["-c", generate_command])
+    let stdin = match input_mode {
+        GenerateInputMode::StdinDiff => Some(diff),
+        GenerateInputMode::RepoInspection => None,
+    };
+    let envs = [
+        (
+            "LAZYGITRS_AI_COMMIT_INPUT",
+            input_mode.as_env_value().to_string(),
+        ),
+        ("LAZYGITRS_AI_COMMIT_DIFF_BYTES", diff.len().to_string()),
+    ];
+    let Some(output) =
+        run_shell_command_cancellable(repo_path, generate_command, stdin, &envs, cancel)?
+    else {
+        return Ok(None);
+    };
+
+    if !output.success {
+        bail!("Generate command failed: {}", output.stderr.trim());
+    }
+
+    Ok(Some(clean_generated_message(
+        &output.stdout,
+        &output.stderr,
+    )?))
+}
+
+/// Captured result of [`run_shell_command_cancellable`].
+pub(crate) struct ShellOutput {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
+/// Run `command` through `sh -c` in `repo_path`, optionally feeding `stdin`,
+/// polling `cancel` every 50ms. Returns `Ok(None)` when cancelled (the child
+/// is killed). Shared by single-message generation and smart commit planning.
+pub(crate) fn run_shell_command_cancellable(
+    repo_path: &Path,
+    command: &str,
+    stdin: Option<&str>,
+    envs: &[(&str, String)],
+    cancel: Arc<AtomicBool>,
+) -> Result<Option<ShellOutput>> {
+    let mut cmd = Command::new("sh");
+    cmd.args(["-c", command])
         .current_dir(repo_path)
-        .stdin(match input_mode {
-            GenerateInputMode::StdinDiff => Stdio::piped(),
-            GenerateInputMode::RepoInspection => Stdio::null(),
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
         })
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .env("LAZYGITRS_AI_COMMIT_INPUT", input_mode.as_env_value())
-        .env("LAZYGITRS_AI_COMMIT_DIFF_BYTES", diff.len().to_string())
-        .spawn()?;
-
-    if input_mode == GenerateInputMode::StdinDiff
-        && let Some(mut stdin) = child.stdin.take()
-    {
-        stdin.write_all(diff.as_bytes())?;
+        .stderr(Stdio::piped());
+    for (key, value) in envs {
+        cmd.env(key, value);
     }
+    let mut child = cmd.spawn()?;
+
+    // Write stdin on its own thread: a large prompt can exceed the pipe
+    // buffer while the child is still blocked writing its own stdout.
+    let stdin_handle = match (stdin, child.stdin.take()) {
+        (Some(input), Some(mut pipe)) => {
+            let input = input.to_string();
+            Some(thread::spawn(move || {
+                // A child that exits without reading all input yields EPIPE;
+                // its exit status is what matters, so ignore write errors.
+                let _ = pipe.write_all(input.as_bytes());
+            }))
+        }
+        _ => None,
+    };
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -98,6 +152,9 @@ pub fn generate_commit_message_from_diff_cancellable(
         if cancel.load(Ordering::Relaxed) {
             let _ = child.kill();
             let _ = child.wait();
+            if let Some(handle) = stdin_handle {
+                let _ = handle.join();
+            }
             let _ = stdout_handle.join();
             let _ = stderr_handle.join();
             return Ok(None);
@@ -110,6 +167,9 @@ pub fn generate_commit_message_from_diff_cancellable(
         thread::sleep(Duration::from_millis(50));
     };
 
+    if let Some(handle) = stdin_handle {
+        let _ = handle.join();
+    }
     let stdout = stdout_handle
         .join()
         .unwrap_or_else(|_| Err(std::io::Error::other("stdout reader panicked")))?;
@@ -117,11 +177,11 @@ pub fn generate_commit_message_from_diff_cancellable(
         .join()
         .unwrap_or_else(|_| Err(std::io::Error::other("stderr reader panicked")))?;
 
-    if !status.success() {
-        bail!("Generate command failed: {}", stderr.trim());
-    }
-
-    Ok(Some(clean_generated_message(&stdout, &stderr)?))
+    Ok(Some(ShellOutput {
+        success: status.success(),
+        stdout,
+        stderr,
+    }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
