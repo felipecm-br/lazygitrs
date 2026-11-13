@@ -197,7 +197,8 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
 - `lazygitrs --print-default-config` — Print the default configuration file.
 - `lazygitrs --clear-session` — Clear/unregister active AI session globally.
 - `lazygitrs sgc` — Smart Commit: review an AI-planned split of every change (`--yes` commits it, `--dry-run`/`--json` print it).
-- `lazygitrs gc [-a] [-c]` — Print an AI commit message for staged changes (`-a` stages all first, `-c` commits it).
+- `lazygitrs gc` — Print an AI Conventional Commit message for staged changes: `-a` stage all first, `-c` commit it, `-g 3` pick from 3 candidates, `-e` gitmoji, `-l pt` language, `-P claude -m haiku` pin agent/model, `-t` title only, `-d` debug. Same AI command, `.sgcignore` and commitlint rules as `sgc`.
+- `lazygitrs gc hook install|uninstall|status` — `prepare-commit-msg` hook so a bare `git commit` opens with an AI message (skipped for `-m`, merges, amends; ignores the `commit.verbose` diff).
 
 **New config properties:**
 
