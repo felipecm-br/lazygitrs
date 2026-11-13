@@ -9,6 +9,7 @@ pub mod fingerprint;
 pub mod loader;
 pub mod rebase;
 pub mod remote;
+pub mod smart_commit;
 pub mod staging;
 pub mod stash;
 pub mod status;
