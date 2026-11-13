@@ -71,6 +71,17 @@ lazygitrs upgrade 0.0.32   # specific version
       generateCommand: 'DIFF=$(git diff --cached) && modelcli "Generate a conventional commit message for this diff. Always provide a bulletpoint body. Do not hard-wrap lines; one bullet per line. $DIFF"'
   ```
 
+- [x] **Smart Commit (`M` in Files, or `lazygitrs sgc`)** — splits *all* staged, unstaged and untracked changes into atomic Conventional Commits planned by your AI, then lets you review them: `space` toggle, `e` edit message, `J`/`K` reorder, `m` merge with the next group, `g` cycle granularity (coarse/medium/fine), `r` regenerate, `Enter` commit. Each group previews its own diff. Plans are cached by content hash (re-opening is instant, leftovers survive partial commits), lockfiles listed in `.sgcignore` stay in the plan with their content hidden from the model, commitlint rules are honored, and every commit uses `git commit --only` so whatever else you staged is left alone. Headless: `lazygitrs sgc --yes` (commit all), `--dry-run`, `--json`, `-g fine`, `-e` (gitmoji), `-l pt`, `-H "hint"`.
+
+  ```yml
+  git:
+    commit:
+      # Receives the full prompt on stdin (LAZYGITRS_AI_COMMIT_INPUT=prompt) and prints the answer.
+      # Empty falls back to generateCommand.
+      smartCommitCommand: "claude -p --model haiku"
+      smartCommitGranularity: medium   # coarse | medium | fine
+  ```
+
 - [x] **Side-by-side + unified diffs** with syntax highlighting by default and unified as well, no pager hacks needed
 - [x] **Better diff navigation UX** — `[]` new/old only views, `{}` for hunk traveling, `hjkl←↑↓→` for line-by-line scrolling, supports mouse select/scroll too. Lots inspired by [lumen](https://github.com/jnsahaj/lumen)
 - [x] **Hunk Reverting & Undo (`<Enter>` / `u`)** — Revert hovered/selected diff blocks with `<Enter>`, and undo block reverts with `u`. Cycle selections using `{` and `}`.
@@ -106,6 +117,7 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)** ($H=0$, H
 | **`Esc`** | Root Files List | Dismiss Popup (or Double-Tap in Fullscreen) | Left Pinky single / double tap | $100\text{ ms}$ / $240\text{ ms}$ | Instant popup dismissal; double-tap guard in fullscreen prevents accidental exits. |
 | **`Ctrl + W` `h` / `l` / `k` / `j` / `=`** | Global | Shrink / Expand / Maximize / Reset Panels | CapsLock + W, then Home Row `h`/`l`/`k`/`j`/`=` | $240\text{ ms}$ | Vim window-resize idiom ($H = 0$); avoids `Alt` thumb adduction (`Alt+h/l/k/j/r` kept for compatibility). |
 | **`Ctrl + A`** | Files Panel | Generate AI Commit Message | CapsLock (Pinky) + A (Left Pinky) | $120\text{ ms}$ | Direct 1-chord AI commit generation from Files panel. |
+| **`M`** | Files Panel | Smart Commit (split changes into atomic AI commits) | Right Index (Shift held by Left Pinky) | $120\text{ ms}$ | One key plans every change as reviewable atomic commits; Enter commits the checked ones. |
 | **`q`** / **`Ctrl + C`**| Anywhere | Hard Exit Application | Left Pinky direct tap / Left Pinky + Left Index | $100\text{ ms}$ / $120\text{ ms}$ | Standard terminal exit fallback. |
 | **`1` / `2` / `3` / `4` / `5`** | Root Navigation | Jump to Status / Files / Branches / Commits / Stash | Number row direct single tap | $120\text{ ms}$ | Direct panel selection bypassing sequential Tab traversal. |
 | **`:`** (Colon) | Global | Open Shell Command Prompt | Shift + `;` (Right Pinky chord) | $130\text{ ms}$ | Vim ex-command mnemonic; executes arbitrary scripts in repo root. |
@@ -184,10 +196,14 @@ Persisted State lives at `~/.local/state/lazygitrs/state.yml` and `~/.local/stat
 - `lazygitrs --config <PATH>` — Load configuration from custom YAML file.
 - `lazygitrs --print-default-config` — Print the default configuration file.
 - `lazygitrs --clear-session` — Clear/unregister active AI session globally.
+- `lazygitrs sgc` — Smart Commit: review an AI-planned split of every change (`--yes` commits it, `--dry-run`/`--json` print it).
+- `lazygitrs gc [-a] [-c]` — Print an AI commit message for staged changes (`-a` stages all first, `-c` commits it).
 
 **New config properties:**
 
 - `git.commit.generateCommand` — shell command for AI-generated commit messages. See [What's different](#whats-different) for examples.
+- `git.commit.smartCommitCommand` / `git.commit.smartCommitGranularity` — AI command (prompt on stdin) and default grouping for Smart Commit.
+- `keybinding.files.smartCommit` — open Smart Commit from the Files panel (default `M`).
 - `gui.border` — can be a string (`rounded`, `single`, `double`, `hidden`) or an object for granular borders:
   ```yaml
   gui:
