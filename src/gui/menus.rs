@@ -238,6 +238,10 @@ impl Gui {
                         "Generate AI commit".into(),
                     ),
                     CommandEntry::keybinding(
+                        kb.files.smart_commit.clone(),
+                        "Smart commit: split changes into atomic AI commits".into(),
+                    ),
+                    CommandEntry::keybinding(
                         kb.files.amend_last_commit.clone(),
                         "Amend last commit".into(),
                     ),

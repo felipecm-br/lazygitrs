@@ -212,6 +212,9 @@ pub struct FilesKeybinding {
     pub commit_changes: String,
     #[serde(rename = "generateAICommit")]
     pub generate_ai_commit: String,
+    /// Split all changes into atomic AI-planned commits (`sgc`).
+    #[serde(rename = "smartCommit")]
+    pub smart_commit: String,
     #[serde(rename = "commitChangesWithoutHook")]
     pub commit_changes_without_hook: String,
     #[serde(rename = "amendLastCommit")]
@@ -238,6 +241,7 @@ impl Default for FilesKeybinding {
             // Not <c-g>: the universal Files<->HEAD toggle owns it and is
             // checked first, so a files-level <c-g> could never fire.
             generate_ai_commit: "<c-a>".into(),
+            smart_commit: "M".into(),
             commit_changes_without_hook: "w".into(),
             amend_last_commit: "A".into(),
             commit_changes_with_editor: "C".into(),
@@ -477,6 +481,7 @@ pub fn generate_keybindings_md(kb: &KeybindingConfig) -> String {
     let quit_key = format_key_display(&kb.universal.quit);
     let quit_alt = format_key_display(&kb.universal.quit_alt1);
     let ai_commit = format_key_display(&kb.files.generate_ai_commit);
+    let smart_commit = format_key_display(&kb.files.smart_commit);
     let prompt_key = format_key_display(&kb.universal.custom_command_prompt);
     let filter_log = format_key_display(&kb.commits.open_log_menu);
     let filter_log_raw = &kb.commits.open_log_menu;
@@ -577,6 +582,7 @@ Audited against Card, Moran & Newell's **Keystroke-Level Model (KLM)**:
 | **`{esc_key}`** | Root Files List | Dismiss Popup (or Double-Tap in Fullscreen) | Left Pinky single / double tap | $100\text{{ ms}}$ / $240\text{{ ms}}$ | Instant popup dismissal; double-tap guard in fullscreen prevents accidental exits. |
 | **`Ctrl + W` `h` / `l` / `k` / `j` / `=`** | Global | Shrink / Expand / Maximize / Reset Panels | CapsLock + W, then Home Row `h`/`l`/`k`/`j`/`=` | $240\text{{ ms}}$ | Vim window-resize idiom ($H = 0$); avoids `Alt` thumb adduction (`Alt+h/l/k/j/r` kept for compatibility). |
 | **`{ai_commit}`** | Files Panel | Generate AI Commit Message | CapsLock (Pinky) + A (Left Pinky) | $120\text{{ ms}}$ | Direct 1-chord AI commit generation from Files panel. |
+| **`{smart_commit}`** | Files Panel | Smart Commit (split changes into atomic AI commits) | Right Index (Shift held by Left Pinky) | $120\text{{ ms}}$ | One key plans every change as reviewable atomic commits; Enter commits the checked ones. |
 | **`{quit_key}`** / **`{quit_alt}`**| Anywhere | Hard Exit Application | Left Pinky direct tap / Left Pinky + Left Index | $100\text{{ ms}}$ / $120\text{{ ms}}$ | Standard terminal exit fallback. |
 | **`1` / `2` / `3` / `4` / `5`** | Root Navigation | Jump to Status / Files / Branches / Commits / Stash | Number row direct single tap | $120\text{{ ms}}$ | Direct panel selection bypassing sequential Tab traversal. |
 | **`{prompt_key}`** (Colon) | Global | Open Shell Command Prompt | Shift + `;` (Right Pinky chord) | $130\text{{ ms}}$ | Vim ex-command mnemonic; executes arbitrary scripts in repo root. |

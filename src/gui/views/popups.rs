@@ -235,6 +235,9 @@ pub fn render_popup(
     let x = (area.width.saturating_sub(popup_width)) / 2;
 
     match popup {
+        PopupState::SmartCommitPlan(state) => {
+            super::render_smart_commit_plan(frame, state, area, theme);
+        }
         PopupState::Confirm { title, message, .. } => {
             let inner_width = popup_width.saturating_sub(4) as usize; // borders + padding
             let wrapped = wrap_popup_lines(message, inner_width);

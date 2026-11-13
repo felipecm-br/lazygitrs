@@ -172,15 +172,15 @@ impl Gui {
                         .trim()
                         .is_empty(),
                 );
-            } else if self.ai_commit_generation_active() {
+            } else if let Some((title, message, cancellable)) = self.busy_overlay() {
                 views::render_loading_overlay(
                     frame,
                     frame.area(),
                     self.spinner_frame,
                     theme,
-                    "AI Commit",
-                    "Generating commit message...",
-                    Some(("Esc esc", "cancel")),
+                    title,
+                    &message,
+                    cancellable.then_some(("Esc esc", "cancel")),
                 );
             } else if let Some(label) = self.remote_op_label.as_deref() {
                 views::render_loading_overlay(
@@ -229,15 +229,15 @@ impl Gui {
                         .trim()
                         .is_empty(),
                 );
-            } else if self.ai_commit_generation_active() {
+            } else if let Some((title, message, cancellable)) = self.busy_overlay() {
                 views::render_loading_overlay(
                     frame,
                     frame.area(),
                     self.spinner_frame,
                     theme,
-                    "AI Commit",
-                    "Generating commit message...",
-                    Some(("Esc esc", "cancel")),
+                    title,
+                    &message,
+                    cancellable.then_some(("Esc esc", "cancel")),
                 );
             } else if let Some(label) = self.remote_op_label.as_deref() {
                 views::render_loading_overlay(
@@ -341,15 +341,15 @@ impl Gui {
                 self.all_branches_log,
             );
             if self.popup == PopupState::None {
-                if self.ai_commit_generation_active() {
+                if let Some((title, message, cancellable)) = self.busy_overlay() {
                     views::render_loading_overlay(
                         frame,
                         frame.area(),
                         self.spinner_frame,
                         theme,
-                        "AI Commit",
-                        "Generating commit message...",
-                        Some(("Esc esc", "cancel")),
+                        title,
+                        &message,
+                        cancellable.then_some(("Esc esc", "cancel")),
                     );
                 } else if let Some(label) = self.remote_op_label.as_deref() {
                     views::render_loading_overlay(
@@ -431,6 +431,7 @@ impl Gui {
 
             // Check for AI commit message generation results
             self.receive_ai_commit_results();
+            self.receive_smart_commit_results();
 
             // Check for completed incremental commit page loads
             self.receive_commit_page_results();
@@ -462,6 +463,7 @@ impl Gui {
                         .as_ref()
                         .is_some_and(|p| !p.uses_placeholders()))
                 || self.ai_commit_generation_active()
+                || self.smart_commit_active()
                 || self.remote_op_label.is_some()
                 || self.rebase_mode.active
                 || self.patch_building.active;
@@ -811,6 +813,7 @@ impl Gui {
         const IDLE: Duration = Duration::from_secs(1);
 
         if self.ai_commit_generation_active()
+            || self.smart_commit_active()
             || self.remote_op_label.is_some()
             || self.needs_refresh
             || self.needs_files_refresh

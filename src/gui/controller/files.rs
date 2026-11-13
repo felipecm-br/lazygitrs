@@ -111,6 +111,9 @@ pub fn handle_key(gui: &mut Gui, key: KeyEvent, keybindings: &KeybindingConfig) 
     if matches_key(key, &keybindings.files.generate_ai_commit) {
         return open_ai_commit_prompt(gui);
     }
+    if matches_key(key, &keybindings.files.smart_commit) {
+        return gui.open_smart_commit();
+    }
 
     if matches_key(key, &keybindings.files.toggle_staged_all) {
         return toggle_stage_all(gui);

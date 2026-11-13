@@ -118,6 +118,14 @@
             "signOff": {
               "default": false,
               "type": "boolean"
+            },
+            "smartCommitCommand": {
+              "default": "",
+              "type": "string"
+            },
+            "smartCommitGranularity": {
+              "default": "medium",
+              "type": "string"
             }
           },
           "type": "object"
@@ -461,6 +469,10 @@
             },
             "ignoreFile": {
               "default": "i",
+              "type": "string"
+            },
+            "smartCommit": {
+              "default": "M",
               "type": "string"
             },
             "stashAllChanges": {

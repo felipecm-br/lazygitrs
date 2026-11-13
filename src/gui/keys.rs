@@ -219,7 +219,7 @@ impl Gui {
     }
 
     pub(super) fn handle_key(&mut self, key: KeyEvent) -> Result<()> {
-        if self.handle_ai_commit_cancel_key(key) {
+        if self.handle_ai_commit_cancel_key(key) || self.handle_smart_commit_cancel_key(key) {
             return Ok(());
         }
 

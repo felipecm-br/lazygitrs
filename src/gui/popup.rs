@@ -589,6 +589,8 @@ pub enum PopupState {
         /// The theme index before opening the picker (for cancel/revert).
         original_theme_index: usize,
     },
+    /// Smart multi-commit plan review (boxed: the state is large).
+    SmartCommitPlan(Box<crate::gui::smart_commit::SmartCommitState>),
     /// Custom commentary review dialog for a specific hunk
     HunkCommentary {
         title: String,

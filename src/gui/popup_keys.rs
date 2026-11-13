@@ -10,6 +10,15 @@ impl Gui {
         let was_theme_picker = matches!(self.popup, PopupState::ThemePicker { .. });
 
         match &self.popup {
+            PopupState::SmartCommitPlan(_) => {
+                if let Err(e) = self.handle_smart_commit_plan_key(key) {
+                    self.popup = PopupState::Message {
+                        title: "Smart commit".to_string(),
+                        message: format!("{e:#}"),
+                        kind: MessageKind::Error,
+                    };
+                }
+            }
             PopupState::Confirm { .. } => {
                 if key.code == KeyCode::Char('y') || key.code == KeyCode::Enter {
                     let popup = std::mem::replace(&mut self.popup, PopupState::None);

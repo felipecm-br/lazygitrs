@@ -27,6 +27,7 @@ mod commit_details;
 mod lists;
 mod overlays;
 mod popups;
+mod smart_commit;
 mod status_bar;
 mod status_panel;
 #[cfg(test)]
@@ -38,6 +39,7 @@ use commit_details::*;
 use lists::*;
 pub use overlays::*;
 pub use popups::*;
+pub use smart_commit::*;
 use status_bar::*;
 use status_panel::*;
 use titles::*;

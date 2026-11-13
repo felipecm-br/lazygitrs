@@ -19,6 +19,7 @@ pub mod presentation;
 mod refresh;
 pub mod scroll;
 mod search;
+pub(crate) mod smart_commit;
 pub mod state;
 pub mod views;
 
@@ -685,6 +686,10 @@ pub struct Gui {
     commit_page_generation: u64,
     /// Active AI commit generation job, if one is running.
     ai_commit_job: Option<AiCommitJob>,
+    smart_commit_job: Option<smart_commit::SmartCommitJob>,
+    smart_commit_generation: u64,
+    smart_commit_tx: mpsc::Sender<smart_commit::SmartCommitMsg>,
+    smart_commit_rx: mpsc::Receiver<smart_commit::SmartCommitMsg>,
     /// Generation counter used to discard stale AI results after cancellation.
     ai_commit_generation: u64,
     /// Diff source for the next AI commit message generation.
@@ -1036,6 +1041,7 @@ impl Gui {
         let (diff_prefetch_tx, diff_prefetch_rx) = mpsc::channel();
         let (commit_details_job_tx, commit_details_job_rx) = mpsc::channel();
         let (ai_commit_tx, ai_commit_rx) = mpsc::channel();
+        let (smart_commit_tx, smart_commit_rx) = mpsc::channel();
         let (commit_page_tx, commit_page_rx) = mpsc::channel();
         let (remote_op_tx, remote_op_rx) = mpsc::channel();
         let (auto_fetch_tx, auto_fetch_rx) = mpsc::channel();
@@ -1252,6 +1258,10 @@ impl Gui {
             commit_history_complete: false,
             commit_page_generation: 0,
             ai_commit_job: None,
+            smart_commit_job: None,
+            smart_commit_generation: 0,
+            smart_commit_tx,
+            smart_commit_rx,
             ai_commit_generation: 0,
             ai_commit_source: AiCommitSource::Staged,
             remote_op_rx,

@@ -406,6 +406,26 @@ pub struct CommitConfig {
     pub auto_wrap_width: usize,
     #[serde(rename = "generateCommand")]
     pub generate_command: String,
+    /// Smart multi-commit (`sgc`) planner command. Receives the full prompt
+    /// on stdin (`LAZYGITRS_AI_COMMIT_INPUT=prompt`) and prints the model's
+    /// JSON answer. Empty falls back to `generateCommand`.
+    #[serde(rename = "smartCommitCommand")]
+    pub smart_commit_command: String,
+    /// Default grouping for smart commit: coarse | medium | fine.
+    #[serde(rename = "smartCommitGranularity")]
+    pub smart_commit_granularity: String,
+}
+
+impl CommitConfig {
+    /// The command smart commit should run, falling back to `generateCommand`.
+    pub fn smart_commit_command(&self) -> &str {
+        let smart = self.smart_commit_command.trim();
+        if smart.is_empty() {
+            self.generate_command.trim()
+        } else {
+            smart
+        }
+    }
 }
 
 impl Default for CommitConfig {
@@ -415,6 +435,8 @@ impl Default for CommitConfig {
             auto_wrap_commit_message: true,
             auto_wrap_width: 72,
             generate_command: String::new(),
+            smart_commit_command: String::new(),
+            smart_commit_granularity: "medium".to_string(),
         }
     }
 }
