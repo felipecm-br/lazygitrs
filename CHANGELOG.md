@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0-cockpit] - 2026-11-13
+
+### Features & Ergonomics
+
+- Smart Commit: `M` in the Files panel (`files.smartCommit`) or `lazygitrs sgc` splits every staged, unstaged and untracked change into atomic Conventional Commits planned by the AI. A review popup lets you toggle, edit (`e`, `Ctrl+S` saves), reorder (`J`/`K`), merge with the next group (`m`), cycle granularity (`g`), regenerate (`r`) and preview each group's diff before `Enter` commits the checked groups
+- Smart Commit plans are cached by a content fingerprint: re-opening on an unchanged tree is instant, and groups you skip are kept for the next run
+- Smart Commit repairs the AI's plan (unknown paths dropped, directories expanded, duplicates removed) and retries with the problems listed when files are unassigned or titles break the rules; leftovers land in a flagged `chore` group
+- Smart Commit commits each group with `git commit --only`, so anything else you staged is left alone, and a rename travels with its source path
+- `.sgcignore` (built-ins for lockfiles, minified bundles and source maps, then `~/.sgcignore`, then the repo's) hides a file's content from the model but keeps the file in the plan, so lockfiles are committed with the change that produced them
+- commitlint configs (`.commitlintrc*`, `commitlint.config.{js,cjs,mjs,ts}`, `package.json`) feed allowed types and scopes, header length and case rules into the prompt and into title validation
+- Diffs sent to the model are compressed and fitted to a 48 KB budget by collapsing the largest files to a `+A/-D` summary; generated bodies are wrapped at 72 columns
+- `lazygitrs sgc --yes` commits the whole plan, `--dry-run` / `--json` print it; `-g coarse|medium|fine`, `-f`, `-e` (gitmoji), `-l <lang>`, `-H <hint>`, `-P <provider>`, `-m <model>`, `-d` (print prompt and raw answers)
+- `lazygitrs gc` prints a commit message for the staged changes: `-a` stages all, `-c` commits, `-g N` picks from N candidates, plus the same `-e` / `-l` / `-H` / `-P` / `-m` / `-d` flags
+- `lazygitrs gc hook install|uninstall|status` manages a `prepare-commit-msg` hook that fills a bare `git commit` with an AI message. It skips `-m`, merges and amends, ignores the `commit.verbose` diff, and replaces the old zsh `gc` hook
+- New config: `git.commit.smartCommitCommand` (receives the prompt on stdin with `LAZYGITRS_AI_COMMIT_INPUT=prompt`; falls back to `generateCommand`) and `git.commit.smartCommitGranularity`
+
 ## [0.2.0-cockpit] - 2026-11-04
 
 ### Breaking
