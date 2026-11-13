@@ -1,5 +1,6 @@
 pub mod acp;
 pub mod app;
+pub mod commit_cli;
 pub mod config;
 pub mod git;
 pub mod gui;

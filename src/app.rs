@@ -14,6 +14,8 @@ pub struct App {
     pub is_popup: bool,
     pub filter_path: Option<PathBuf>,
     pub start_in_commits: bool,
+    /// Open the Smart Commit review on startup (`lazygitrs sgc`).
+    pub start_smart_commit: Option<crate::git::smart_commit::SmartCommitOptions>,
 }
 
 impl App {
@@ -42,6 +44,7 @@ impl App {
             is_popup,
             filter_path,
             start_in_commits,
+            start_smart_commit: None,
         })
     }
 
@@ -62,6 +65,9 @@ impl App {
             self.filter_path,
             self.start_in_commits,
         )?;
+        if let Some(options) = self.start_smart_commit {
+            gui.start_smart_commit_plan(options);
+        }
         gui.run()
     }
 }

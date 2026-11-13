@@ -1,4 +1,5 @@
-use lazygitrs::{app, config, os, upgrade};
+use lazygitrs::git::smart_commit::{Granularity, SmartCommitOptions};
+use lazygitrs::{app, commit_cli, config, os, upgrade};
 
 use std::path::PathBuf;
 
@@ -73,6 +74,55 @@ enum Commands {
         /// Target version (e.g. `0.0.32`) or `latest`
         target: Option<String>,
     },
+    /// Smart commit: split every change into atomic AI-planned commits
+    ///
+    /// Opens the review popup in a terminal; with --yes commits the whole
+    /// plan, with --dry-run / --json only prints it.
+    Sgc {
+        /// Commit the whole plan without review
+        #[arg(short, long)]
+        yes: bool,
+        /// Print the plan and exit without committing
+        #[arg(short = 'n', long)]
+        dry_run: bool,
+        /// Print the plan as JSON (with --yes, also commit it)
+        #[arg(long)]
+        json: bool,
+        /// Grouping: coarse, medium or fine [default: git.commit.smartCommitGranularity]
+        #[arg(short, long, value_parser = parse_granularity)]
+        granularity: Option<Granularity>,
+        /// Ignore the cached plan and ask the AI again
+        #[arg(short, long)]
+        force: bool,
+        /// Prefix titles with a gitmoji
+        #[arg(short, long)]
+        emoji: bool,
+        /// Message language (ISO 639-1, e.g. pt, es)
+        #[arg(short, long)]
+        lang: Option<String>,
+        /// Extra guidance for the AI (e.g. "scope everything under tui")
+        #[arg(short = 'H', long)]
+        hint: Option<String>,
+        /// AI command override (reads the prompt on stdin)
+        #[arg(long)]
+        command: Option<String>,
+        /// Prompt byte budget for diff context
+        #[arg(long, default_value_t = 0, hide_default_value = true)]
+        budget: usize,
+    },
+    /// Print an AI commit message for the staged changes (git.commit.generateCommand)
+    Gc {
+        /// Stage all changes first
+        #[arg(short, long)]
+        all: bool,
+        /// Commit with the generated message instead of printing it
+        #[arg(short, long)]
+        commit: bool,
+    },
+}
+
+fn parse_granularity(value: &str) -> Result<Granularity, String> {
+    Granularity::parse(value).ok_or_else(|| format!("'{value}' is not coarse, medium or fine"))
 }
 
 /// Restore the terminal on panic so the user isn't left in raw mode + mouse
@@ -120,12 +170,66 @@ fn main() {
     install_panic_hook();
     let cli = Cli::parse();
 
-    if let Some(Commands::Upgrade { target }) = cli.command {
-        if let Err(e) = upgrade::upgrade(target.as_deref()) {
-            eprintln!("Error: {e:#}");
-            std::process::exit(1);
+    let mut start_smart_commit: Option<SmartCommitOptions> = None;
+    match cli.command {
+        Some(Commands::Upgrade { target }) => {
+            if let Err(e) = upgrade::upgrade(target.as_deref()) {
+                eprintln!("Error: {e:#}");
+                std::process::exit(1);
+            }
+            return;
         }
-        return;
+        Some(Commands::Sgc {
+            yes,
+            dry_run,
+            json,
+            granularity,
+            force,
+            emoji,
+            lang,
+            hint,
+            command,
+            budget,
+        }) => {
+            let repo = cli_repo_path(&cli.path, &cli.work_tree);
+            let config = load_config_or_exit(cli.config.clone());
+            let granularity = granularity.unwrap_or_else(|| {
+                Granularity::parse(&config.user_config.git.commit.smart_commit_granularity)
+                    .unwrap_or_default()
+            });
+            let args = commit_cli::SgcArgs {
+                yes,
+                dry_run,
+                json,
+                command,
+                options: SmartCommitOptions {
+                    granularity,
+                    emoji,
+                    lang,
+                    force,
+                    hint,
+                    context_budget: budget,
+                },
+            };
+            match commit_cli::sgc(&repo, &config, args) {
+                Ok(commit_cli::SgcOutcome::Done) => return,
+                Ok(commit_cli::SgcOutcome::Review(options)) => start_smart_commit = Some(options),
+                Err(e) => {
+                    eprintln!("sgc: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(Commands::Gc { all, commit }) => {
+            let repo = cli_repo_path(&cli.path, &cli.work_tree);
+            let config = load_config_or_exit(cli.config.clone());
+            if let Err(e) = commit_cli::gc(&repo, &config, commit_cli::GcArgs { all, commit }) {
+                eprintln!("gc: {e:#}");
+                std::process::exit(1);
+            }
+            return;
+        }
+        None => {}
     }
 
     if cli.print_default_config {
@@ -196,10 +300,7 @@ fn main() {
             .init();
     }
 
-    let repo_path = cli
-        .path
-        .or(cli.work_tree)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let repo_path = cli_repo_path(&cli.path, &cli.work_tree);
 
     let start_in_diff = cli.diff || cli.file.is_some();
 
@@ -212,20 +313,36 @@ fn main() {
         cli.filter_path,
         cli.commits,
     ) {
-        Ok(app) => match app.run() {
-            Ok(quit_reason) => {
-                std::process::exit(quit_reason.exit_code());
+        Ok(mut app) => {
+            app.start_smart_commit = start_smart_commit;
+            match app.run() {
+                Ok(quit_reason) => {
+                    std::process::exit(quit_reason.exit_code());
+                }
+                Err(e) => {
+                    eprintln!("Error: {:#}", e);
+                    std::process::exit(1);
+                }
             }
-            Err(e) => {
-                eprintln!("Error: {:#}", e);
-                std::process::exit(1);
-            }
-        },
+        }
         Err(e) => {
             eprintln!("Error: {:#}", e);
             std::process::exit(1);
         }
     }
+}
+
+fn cli_repo_path(path: &Option<PathBuf>, work_tree: &Option<PathBuf>) -> PathBuf {
+    path.clone()
+        .or_else(|| work_tree.clone())
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+}
+
+fn load_config_or_exit(config_override: Option<String>) -> config::AppConfig {
+    config::AppConfig::load(false, config_override).unwrap_or_else(|e| {
+        eprintln!("Error: {e:#}");
+        std::process::exit(1);
+    })
 }
 
 #[cfg(test)]
@@ -239,5 +356,24 @@ mod tests {
 
         let cli_default = Cli::parse_from(["lazygitrs"]);
         assert!(!cli_default.commits);
+    }
+
+    #[test]
+    fn test_cli_sgc_flags() {
+        let cli = Cli::parse_from(["lazygitrs", "sgc", "-y", "-g", "fine", "-e", "-l", "pt"]);
+        let Some(Commands::Sgc {
+            yes,
+            granularity,
+            emoji,
+            lang,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected sgc");
+        };
+        assert!(yes && emoji);
+        assert_eq!(granularity, Some(Granularity::Fine));
+        assert_eq!(lang.as_deref(), Some("pt"));
+        assert!(Cli::try_parse_from(["lazygitrs", "sgc", "-g", "huge"]).is_err());
     }
 }
