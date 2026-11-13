@@ -33,7 +33,7 @@ syntax-highlight = [
 
 [dependencies]
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 # `use-dev-tty` switches crossterm off mio/kqueue onto filedescriptor's
 # select()-based reader. Required on macOS under Helix `:insert-output`,
 # where stdin is /dev/null so events come from /dev/tty (mio returns POLLNVAL).

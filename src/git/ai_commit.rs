@@ -316,7 +316,7 @@ fn clean_generated_message(stdout: &str, stderr: &str) -> Result<String> {
 }
 
 /// Strip markdown code fences and any preamble text before the commit message.
-fn strip_markdown_fences(raw: &str) -> String {
+pub(crate) fn strip_markdown_fences(raw: &str) -> String {
     let trimmed = raw.trim();
 
     // If the output contains a code fence, extract content from within it

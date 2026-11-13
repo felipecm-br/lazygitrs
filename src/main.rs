@@ -109,15 +109,85 @@ enum Commands {
         /// Prompt byte budget for diff context
         #[arg(long, default_value_t = 0, hide_default_value = true)]
         budget: usize,
+        #[command(flatten)]
+        ai: AiArgs,
     },
-    /// Print an AI commit message for the staged changes (git.commit.generateCommand)
+    /// Generate a Conventional Commit message for the staged changes
+    ///
+    /// Prints the message (or commits it with --commit). Uses the same AI
+    /// command, .sgcignore, diff compression and commitlint rules as sgc.
     Gc {
-        /// Stage all changes first
+        #[command(subcommand)]
+        action: Option<GcAction>,
+        /// Stage all changes first (git add -A)
         #[arg(short, long)]
         all: bool,
         /// Commit with the generated message instead of printing it
         #[arg(short, long)]
         commit: bool,
+        /// Generate N alternatives and pick one (prints all when not a terminal)
+        #[arg(short, long, value_name = "N", default_value_t = 1)]
+        generate: usize,
+        /// Prefix the title with a gitmoji
+        #[arg(short, long)]
+        emoji: bool,
+        /// Message language (ISO 639-1, e.g. pt, es)
+        #[arg(short, long)]
+        lang: Option<String>,
+        /// Extra guidance for the AI
+        #[arg(short = 'H', long)]
+        hint: Option<String>,
+        /// Print only the title line
+        #[arg(short, long)]
+        title_only: bool,
+        /// Exit 0 silently when nothing is staged
+        #[arg(short = 'n', long)]
+        silent_empty: bool,
+        /// AI command override (reads the prompt on stdin)
+        #[arg(long)]
+        command: Option<String>,
+        #[command(flatten)]
+        ai: AiArgs,
+    },
+}
+
+/// Provider/model hints and debugging, shared by sgc and gc.
+#[derive(clap::Args, Debug, Default)]
+struct AiArgs {
+    /// Provider hint for the AI command (env LAZYGITRS_AI_PROVIDER), e.g. claude
+    #[arg(short = 'P', long, env = "GC_PROVIDER")]
+    provider: Option<String>,
+    /// Model hint for the AI command (env LAZYGITRS_AI_MODEL)
+    #[arg(short, long, env = "GC_MODEL")]
+    model: Option<String>,
+    /// Print the prompt and the raw AI answers to stderr
+    #[arg(short, long)]
+    debug: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum GcAction {
+    /// Manage the prepare-commit-msg hook that fills empty commit messages
+    Hook {
+        #[command(subcommand)]
+        action: HookAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum HookAction {
+    /// Install into this repository's hooks directory
+    Install,
+    /// Remove the lazygitrs-managed block (and a legacy zsh gc block)
+    Uninstall,
+    /// Show whether the hook is installed
+    Status,
+    /// Called by the hook: <msg-file> [source] [sha]
+    #[command(hide = true)]
+    Run {
+        file: PathBuf,
+        source: Option<String>,
+        sha: Option<String>,
     },
 }
 
@@ -190,6 +260,7 @@ fn main() {
             hint,
             command,
             budget,
+            ai,
         }) => {
             let repo = cli_repo_path(&cli.path, &cli.work_tree);
             let config = load_config_or_exit(cli.config.clone());
@@ -209,6 +280,9 @@ fn main() {
                     force,
                     hint,
                     context_budget: budget,
+                    provider: ai.provider,
+                    model: ai.model,
+                    debug: ai.debug,
                 },
             };
             match commit_cli::sgc(&repo, &config, args) {
@@ -220,10 +294,56 @@ fn main() {
                 }
             }
         }
-        Some(Commands::Gc { all, commit }) => {
+        Some(Commands::Gc {
+            action,
+            all,
+            commit,
+            generate,
+            emoji,
+            lang,
+            hint,
+            title_only,
+            silent_empty,
+            command,
+            ai,
+        }) => {
             let repo = cli_repo_path(&cli.path, &cli.work_tree);
-            let config = load_config_or_exit(cli.config.clone());
-            if let Err(e) = commit_cli::gc(&repo, &config, commit_cli::GcArgs { all, commit }) {
+            let result = match action {
+                Some(GcAction::Hook { action }) => match action {
+                    HookAction::Install => commit_cli::hook_install(&repo),
+                    HookAction::Uninstall => commit_cli::hook_uninstall(&repo),
+                    HookAction::Status => commit_cli::hook_status(&repo),
+                    HookAction::Run { file, source, .. } => {
+                        let config = load_config_or_exit(cli.config.clone());
+                        commit_cli::hook_run(&repo, &config, &file, source.as_deref())
+                    }
+                },
+                None => {
+                    let config = load_config_or_exit(cli.config.clone());
+                    commit_cli::gc(
+                        &repo,
+                        &config,
+                        commit_cli::GcArgs {
+                            all,
+                            commit,
+                            count: generate,
+                            title_only,
+                            silent_empty,
+                            command,
+                            options: SmartCommitOptions {
+                                emoji,
+                                lang,
+                                hint,
+                                provider: ai.provider,
+                                model: ai.model,
+                                debug: ai.debug,
+                                ..Default::default()
+                            },
+                        },
+                    )
+                }
+            };
+            if let Err(e) = result {
                 eprintln!("gc: {e:#}");
                 std::process::exit(1);
             }
@@ -375,5 +495,52 @@ mod tests {
         assert_eq!(granularity, Some(Granularity::Fine));
         assert_eq!(lang.as_deref(), Some("pt"));
         assert!(Cli::try_parse_from(["lazygitrs", "sgc", "-g", "huge"]).is_err());
+    }
+
+    #[test]
+    fn test_cli_gc_flags_and_hook() {
+        let cli = Cli::parse_from([
+            "lazygitrs",
+            "gc",
+            "-a",
+            "-g",
+            "3",
+            "-e",
+            "-P",
+            "claude",
+            "-d",
+        ]);
+        let Some(Commands::Gc {
+            all,
+            generate,
+            emoji,
+            ai,
+            action: None,
+            ..
+        }) = cli.command
+        else {
+            panic!("expected gc");
+        };
+        assert!(all && emoji && ai.debug);
+        assert_eq!(generate, 3);
+        assert_eq!(ai.provider.as_deref(), Some("claude"));
+
+        let cli = Cli::parse_from([
+            "lazygitrs",
+            "gc",
+            "hook",
+            "run",
+            ".git/COMMIT_EDITMSG",
+            "message",
+        ]);
+        assert!(matches!(
+            cli.command,
+            Some(Commands::Gc {
+                action: Some(GcAction::Hook {
+                    action: HookAction::Run { .. }
+                }),
+                ..
+            })
+        ));
     }
 }

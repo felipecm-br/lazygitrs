@@ -433,3 +433,98 @@ fn plan_rejects_clean_tree_and_missing_command() {
     .unwrap_err();
     assert!(err.to_string().contains("smartCommitCommand"));
 }
+
+#[test]
+fn generate_messages_from_staged_changes() {
+    let _guard = E2E
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let temp = repo();
+    let r = &temp.path;
+    let tools = TempDir::new("tools");
+    write(r, "src/lib.rs", "pub fn a() {}\npub fn c() {}\n");
+    write(r, "README.md", "unstaged edit\n");
+    git(r, &["add", "src/lib.rs"]);
+    git(r, &["mv", "old.txt", "moved.txt"]);
+
+    let cmd = fake_ai(
+        &tools.path,
+        r#"[{"title": "feat(core): add c", "body": ["add c"]}, {"title": "bad title"}, {"title": "feat: expose c helper"}]"#,
+    );
+    let options = SmartCommitOptions {
+        emoji: false,
+        lang: Some("pt".into()),
+        ..Default::default()
+    };
+    let cancel = Arc::new(AtomicBool::new(false));
+    let got = generate_messages(r, &cmd, &options, 2, Arc::clone(&cancel), &|_| {})
+        .unwrap()
+        .unwrap();
+    assert_eq!(got.len(), 2, "invalid title dropped");
+    assert_eq!(got[0].message(), "feat(core): add c\n\n- add c");
+    let prompt = std::fs::read_to_string(tools.path.join("prompt.txt")).unwrap();
+    assert!(prompt.contains("+pub fn c() {}"));
+    assert!(prompt.contains("moved.txt (renamed from old.txt)"));
+    assert!(!prompt.contains("README.md"), "only staged changes");
+    assert!(prompt.contains("ISO 639-1 code 'pt'"));
+    assert!(prompt.contains("2 genuinely different alternatives"));
+
+    // A plain-text answer (models often skip JSON for one message) is accepted.
+    let cmd = fake_ai(&tools.path, "```\nfix(core): handle c\n\n- details\n```\n");
+    let got = generate_messages(r, &cmd, &SmartCommitOptions::default(), 1, cancel, &|_| {})
+        .unwrap()
+        .unwrap();
+    assert_eq!(got[0].message(), "fix(core): handle c\n\n- details");
+}
+
+#[test]
+fn generate_messages_passes_provider_and_model() {
+    let _guard = E2E
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let temp = repo();
+    let r = &temp.path;
+    write(r, "src/lib.rs", "x\n");
+    git(r, &["add", "-A"]);
+    let cmd = "cat >/dev/null; printf 'chore: %s %s\\n' \"$LAZYGITRS_AI_PROVIDER\" \"$LAZYGITRS_AI_MODEL\"";
+    let options = SmartCommitOptions {
+        provider: Some("claude".into()),
+        model: Some("haiku".into()),
+        ..Default::default()
+    };
+    let got = generate_messages(
+        r,
+        cmd,
+        &options,
+        1,
+        Arc::new(AtomicBool::new(false)),
+        &|_| {},
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(got[0].title, "chore: claude haiku");
+    let err = generate_messages(
+        &repo().path,
+        cmd,
+        &options,
+        1,
+        Arc::new(AtomicBool::new(false)),
+        &|_| {},
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("No staged changes"));
+}
+
+#[test]
+fn body_lines_wrap_at_72_with_hanging_indent() {
+    let long = "- Makes formatter output consistent for every contributor instead of relying on rustfmt defaults";
+    let body = clean_body(&format!("{long}\n- short\nCo-Authored-By: x <y>"));
+    let lines: Vec<&str> = body.lines().collect();
+    assert!(lines.iter().all(|l| l.chars().count() <= 72), "{body}");
+    assert!(lines[0].starts_with("- Makes"));
+    assert!(
+        lines[1].starts_with("  "),
+        "continuation is indented: {body}"
+    );
+    assert_eq!(*lines.last().unwrap(), "- short");
+}

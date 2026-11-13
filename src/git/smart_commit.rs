@@ -125,6 +125,12 @@ pub struct SmartCommitOptions {
     pub hint: Option<String>,
     /// Byte budget for diff context; `0` means [`DEFAULT_CONTEXT_BUDGET`].
     pub context_budget: usize,
+    /// Passed to the AI command as `LAZYGITRS_AI_PROVIDER` (e.g. claude).
+    pub provider: Option<String>,
+    /// Passed to the AI command as `LAZYGITRS_AI_MODEL`.
+    pub model: Option<String>,
+    /// Report the prompt and raw answers through the progress callback.
+    pub debug: bool,
 }
 
 impl SmartCommitOptions {
@@ -134,6 +140,21 @@ impl SmartCommitOptions {
         } else {
             self.context_budget
         }
+    }
+
+    /// Environment for the AI command: prompt mode plus provider/model hints.
+    fn ai_envs(&self, prompt: &str) -> Vec<(&'static str, String)> {
+        let mut envs = vec![
+            ("LAZYGITRS_AI_COMMIT_INPUT", "prompt".to_string()),
+            ("LAZYGITRS_AI_PROMPT_BYTES", prompt.len().to_string()),
+        ];
+        if let Some(provider) = self.provider.as_deref().filter(|p| !p.trim().is_empty()) {
+            envs.push(("LAZYGITRS_AI_PROVIDER", provider.trim().to_string()));
+        }
+        if let Some(model) = self.model.as_deref().filter(|m| !m.trim().is_empty()) {
+            envs.push(("LAZYGITRS_AI_MODEL", model.trim().to_string()));
+        }
+        envs
     }
 
     fn cache_key(&self) -> String {
@@ -1053,11 +1074,8 @@ fn build_context(changes: &ChangeSet, budget: usize) -> String {
     out
 }
 
-fn build_prompt(
-    changes: &ChangeSet,
-    options: &SmartCommitOptions,
-    commitlint: &CommitlintRules,
-) -> String {
+/// Rules every generated message follows (shared by `plan` and `generate_messages`).
+fn message_rules(options: &SmartCommitOptions, commitlint: &CommitlintRules) -> Vec<String> {
     let types = commitlint.allowed_types().join(", ");
     let header_max = commitlint.header_max();
     let mut rules = vec![
@@ -1067,11 +1085,7 @@ fn build_prompt(
         ),
         "- Scope is a short module/area name taken from the paths (optional).".to_string(),
         "- Body: 1-4 '-' bullet lines explaining what changed and WHY, wrapped at 72 columns. Empty string for trivial commits.".to_string(),
-        "- Every changed file listed above appears in exactly one commit, including lockfiles and binaries. Use the exact paths.".to_string(),
-        "- A lockfile or generated file goes with the change that produced it (e.g. Cargo.lock with Cargo.toml).".to_string(),
-        "- Order commits so each one builds on the previous: foundations (build, refactor) before the features that use them.".to_string(),
         "- Never use breaking-change markers or trailers unless the diff clearly removes a public API.".to_string(),
-        format!("- {}", options.granularity.rule()),
     ];
     rules.extend(commitlint.prompt_lines());
     if let Some(lang) = options.lang.as_deref().filter(|l| !l.trim().is_empty()) {
@@ -1088,6 +1102,21 @@ fn build_prompt(
     if let Some(hint) = options.hint.as_deref().filter(|h| !h.trim().is_empty()) {
         rules.push(format!("- Author guidance: {}", hint.trim()));
     }
+    rules
+}
+
+fn build_prompt(
+    changes: &ChangeSet,
+    options: &SmartCommitOptions,
+    commitlint: &CommitlintRules,
+) -> String {
+    let mut rules = message_rules(options, commitlint);
+    rules.extend([
+        "- Every changed file listed above appears in exactly one commit, including lockfiles and binaries. Use the exact paths.".to_string(),
+        "- A lockfile or generated file goes with the change that produced it (e.g. Cargo.lock with Cargo.toml).".to_string(),
+        "- Order commits so each one builds on the previous: foundations (build, refactor) before the features that use them.".to_string(),
+        format!("- {}", options.granularity.rule()),
+    ]);
 
     format!(
         "You are a senior engineer splitting a working tree into clean, atomic Conventional Commits.\n\
@@ -1251,10 +1280,37 @@ fn clean_body(body: &str) -> String {
                 || lower.starts_with("signed-off-by:")
                 || lower.starts_with("```"))
         })
+        .flat_map(|l| wrap_body_line(l, BODY_WRAP))
         .collect::<Vec<_>>()
         .join("\n")
         .trim()
         .to_string()
+}
+
+/// Body width (git convention); models often ignore the wrap instruction.
+const BODY_WRAP: usize = 72;
+
+/// Wrap one body line, indenting continuation lines under a `- ` bullet.
+fn wrap_body_line(line: &str, width: usize) -> Vec<String> {
+    let line = line.trim_end();
+    if unicode_width::UnicodeWidthStr::width(line) <= width {
+        return vec![line.to_string()];
+    }
+    let indent: String = line.chars().take_while(|c| c.is_whitespace()).collect();
+    let rest = &line[indent.len()..];
+    let hang = if rest.starts_with("- ") || rest.starts_with("* ") {
+        format!("{indent}  ")
+    } else {
+        indent.clone()
+    };
+    let options = textwrap::Options::new(width)
+        .initial_indent(&indent)
+        .subsequent_indent(&hang)
+        .break_words(false);
+    textwrap::wrap(rest, options)
+        .into_iter()
+        .map(|l| l.into_owned())
+        .collect()
 }
 
 /// Is `title` `[emoji ]type[(scope)][!]: summary` with an allowed type?
@@ -1318,34 +1374,7 @@ fn repair_plan(
     let mut issues = Vec::new();
 
     for item in raw {
-        let (mut title, mut body) = match (&item.title, &item.message) {
-            (Some(title), _) => (title.clone(), String::new()),
-            (None, Some(message)) => match message.split_once('\n') {
-                Some((t, b)) => (t.to_string(), b.to_string()),
-                None => (message.clone(), String::new()),
-            },
-            (None, None) => (String::new(), String::new()),
-        };
-        match &item.body {
-            Some(Value::String(b)) => body = b.clone(),
-            Some(Value::Array(lines)) => {
-                body = lines
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(|l| {
-                        if l.trim_start().starts_with('-') {
-                            l.to_string()
-                        } else {
-                            format!("- {l}")
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-            }
-            _ => {}
-        }
-        title = clean_title(&title);
-        body = clean_body(&body);
+        let (mut title, body) = split_raw_message(&item);
 
         let mut files = Vec::new();
         for value in &item.files {
@@ -1594,17 +1623,16 @@ pub fn plan(
             "Asking AI to group {} files (attempt {attempts}/{MAX_ATTEMPTS})",
             changes.files.len()
         ));
-        let envs = [
-            ("LAZYGITRS_AI_COMMIT_INPUT", "prompt".to_string()),
-            ("LAZYGITRS_AI_PROMPT_BYTES", active_prompt.len().to_string()),
-            ("LAZYGITRS_SMART_COMMIT", "1".to_string()),
-        ];
-        let Some(output) = run_shell_command_cancellable(
+        let mut envs = options.ai_envs(&active_prompt);
+        envs.push(("LAZYGITRS_SMART_COMMIT", "1".to_string()));
+        let Some(output) = ask_ai(
             &changes.root,
             command,
-            Some(&active_prompt),
+            &active_prompt,
             &envs,
+            options.debug,
             Arc::clone(&cancel),
+            progress,
         )?
         else {
             return Ok(None);
@@ -1677,6 +1705,262 @@ pub fn plan(
         warnings: repaired.issues,
         attempts,
     }))
+}
+
+/// Run the AI command once, echoing prompt and answer when debugging.
+fn ask_ai(
+    root: &Path,
+    command: &str,
+    prompt: &str,
+    envs: &[(&str, String)],
+    debug: bool,
+    cancel: Arc<AtomicBool>,
+    progress: Progress<'_>,
+) -> Result<Option<super::ai_commit::ShellOutput>> {
+    if debug {
+        progress(&format!(
+            "debug: command `{command}`, prompt {} bytes:\n{prompt}",
+            prompt.len()
+        ));
+    }
+    let output = run_shell_command_cancellable(root, command, Some(prompt), envs, cancel)?;
+    if debug && let Some(out) = &output {
+        progress(&format!(
+            "debug: exit ok={}\n--- stdout ---\n{}\n--- stderr ---\n{}",
+            out.success,
+            out.stdout.trim(),
+            out.stderr.trim()
+        ));
+    }
+    Ok(output)
+}
+
+// ── Single message (gc) ────────────────────────────────────────────────────
+
+/// Staged changes only, in the same shape [`collect_changes`] returns.
+pub fn collect_staged_changes(repo_path: &Path) -> Result<ChangeSet> {
+    let root = PathBuf::from(git_output(repo_path, &["rev-parse", "--show-toplevel"])?.trim());
+    let ignore = IgnoreRules::load(&root);
+    let names = git_output_raw(
+        &root,
+        &["diff", "--cached", "--name-status", "-z", "--find-renames"],
+    )?;
+    let diff_text = git_output(
+        &root,
+        &[
+            "-c",
+            "core.quotePath=false",
+            "diff",
+            "--cached",
+            "--no-color",
+            "--no-ext-diff",
+            "--find-renames",
+            "--src-prefix=a/",
+            "--dst-prefix=b/",
+        ],
+    )?;
+    let mut diff_by_path: HashMap<String, String> = HashMap::new();
+    for (path, section) in split_diff_by_file(&diff_text) {
+        diff_by_path.entry(path).or_default().push_str(&section);
+    }
+
+    let mut tokens = names
+        .split(|b| *b == 0)
+        .map(|t| String::from_utf8_lossy(t).into_owned())
+        .filter(|t| !t.is_empty());
+    let mut files = Vec::new();
+    let mut sections = Vec::new();
+    while let Some(code) = tokens.next() {
+        let letter = code.chars().next().unwrap_or('M');
+        let (old_path, path) = if matches!(letter, 'R' | 'C') {
+            let old = tokens.next();
+            (old, tokens.next().unwrap_or_default())
+        } else {
+            (None, tokens.next().unwrap_or_default())
+        };
+        let kind = match letter {
+            'A' => ChangeKind::Added,
+            'D' => ChangeKind::Deleted,
+            'R' | 'C' => ChangeKind::Renamed,
+            'T' => ChangeKind::TypeChanged,
+            _ => ChangeKind::Modified,
+        };
+        let raw = diff_by_path.get(&path).cloned().unwrap_or_default();
+        let (added, deleted, binary) = count_diff_lines(&raw);
+        let content_ignored = ignore.is_ignored(&path);
+        sections.push(if content_ignored || binary {
+            String::new()
+        } else {
+            compress_diff(&raw)
+        });
+        files.push(ChangedFile {
+            path,
+            old_path,
+            kind,
+            added,
+            deleted,
+            binary,
+            content_ignored,
+        });
+    }
+    Ok(ChangeSet {
+        root,
+        files,
+        sections,
+        fingerprint: 0,
+    })
+}
+
+/// Generate `count` alternative commit messages for the staged changes.
+/// Each candidate is a [`SmartCommitGroup`] with the staged paths as files.
+/// Returns `Ok(None)` when cancelled.
+pub fn generate_messages(
+    repo_path: &Path,
+    command: &str,
+    options: &SmartCommitOptions,
+    count: usize,
+    cancel: Arc<AtomicBool>,
+    progress: Progress<'_>,
+) -> Result<Option<Vec<SmartCommitGroup>>> {
+    if command.trim().is_empty() {
+        bail!(
+            "No AI command configured. Set git.commit.smartCommitCommand (or generateCommand) \
+             to a command that reads a prompt on stdin and prints the answer."
+        );
+    }
+    let changes = collect_staged_changes(repo_path)?;
+    if changes.is_empty() {
+        bail!("No staged changes");
+    }
+    let commitlint = CommitlintRules::load(&changes.root);
+    let count = count.clamp(1, 10);
+    let mut rules = message_rules(options, &commitlint);
+    if count > 1 {
+        rules.push(format!(
+            "- Give {count} genuinely different alternatives (scope, angle or wording), best first."
+        ));
+    }
+    let prompt = format!(
+        "You are a senior engineer writing the Conventional Commit message for these staged changes.\n\n\
+         {context}\n## Rules\n{rules}\n\n## Output\n\
+         Output ONLY a JSON array of {count} object(s), no prose, no markdown fences:\n\
+         [{{\"title\": \"type(scope): summary\", \"body\": \"- why 1\\n- why 2\"}}]\n",
+        context = build_context(&changes, options.budget()),
+        rules = rules.join("\n"),
+    );
+    let paths: Vec<String> = changes.files.iter().map(|f| f.path.clone()).collect();
+
+    let mut active_prompt = prompt.clone();
+    let mut best: Vec<SmartCommitGroup> = Vec::new();
+    let mut last_error = String::from("AI produced no usable message");
+    for attempt in 1..=MAX_ATTEMPTS {
+        progress(&format!(
+            "Generating commit message (attempt {attempt}/{MAX_ATTEMPTS})"
+        ));
+        let envs = options.ai_envs(&active_prompt);
+        let Some(output) = ask_ai(
+            &changes.root,
+            command,
+            &active_prompt,
+            &envs,
+            options.debug,
+            Arc::clone(&cancel),
+            progress,
+        )?
+        else {
+            return Ok(None);
+        };
+        if !output.success {
+            last_error = format!("AI command failed: {}", output.stderr.trim());
+            continue;
+        }
+        // Accept a bare message too: models often ignore the JSON request for N=1.
+        let raw = extract_json(&output.stdout).unwrap_or_else(|| {
+            let text = super::ai_commit::strip_markdown_fences(&output.stdout);
+            if text.trim().is_empty() {
+                Vec::new()
+            } else {
+                vec![RawGroup {
+                    title: None,
+                    body: None,
+                    message: Some(text),
+                    files: Vec::new(),
+                }]
+            }
+        });
+        let mut issues = Vec::new();
+        let mut valid = Vec::new();
+        let mut seen = HashSet::new();
+        for item in raw {
+            let (title, body) = split_raw_message(&item);
+            if title.is_empty() || !seen.insert(title.clone()) {
+                continue;
+            }
+            match title_issue(&title, &commitlint, options.emoji) {
+                Some(issue) => issues.push(issue),
+                None => valid.push(SmartCommitGroup {
+                    title,
+                    body,
+                    files: paths.clone(),
+                    fallback: false,
+                }),
+            }
+        }
+        if valid.len() > best.len() {
+            best = valid;
+        }
+        if best.len() >= count || (issues.is_empty() && !best.is_empty()) {
+            break;
+        }
+        last_error = issues.first().cloned().unwrap_or(last_error);
+        active_prompt = format!(
+            "Your previous answer was not usable:\n{}\n\nAnswer again following the output format exactly.\n\n---\n\n{prompt}",
+            if issues.is_empty() {
+                "- no JSON array of {\"title\", \"body\"} objects found".to_string()
+            } else {
+                issues
+                    .iter()
+                    .map(|i| format!("- {i}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        );
+    }
+    if best.is_empty() {
+        bail!("{last_error}");
+    }
+    best.truncate(count);
+    Ok(Some(best))
+}
+
+fn split_raw_message(item: &RawGroup) -> (String, String) {
+    let (title, mut body) = match (&item.title, &item.message) {
+        (Some(title), _) => (title.clone(), String::new()),
+        (None, Some(message)) => match message.trim().split_once('\n') {
+            Some((t, b)) => (t.to_string(), b.to_string()),
+            None => (message.clone(), String::new()),
+        },
+        (None, None) => (String::new(), String::new()),
+    };
+    match &item.body {
+        Some(Value::String(b)) => body = b.clone(),
+        Some(Value::Array(lines)) => {
+            body = lines
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|l| {
+                    if l.trim_start().starts_with('-') {
+                        l.to_string()
+                    } else {
+                        format!("- {l}")
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+        }
+        _ => {}
+    }
+    (clean_title(&title), clean_body(&body))
 }
 
 // ── Committing ─────────────────────────────────────────────────────────────
